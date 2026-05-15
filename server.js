@@ -13,6 +13,7 @@ import express from 'express';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { getReviewsForHandle } from './reviews.js';
+import { sendPush } from './push.js';
 
 const { Pool } = pg;
 
@@ -24,6 +25,8 @@ const pool = new Pool({
 const CUSTOMER_API =
   process.env.SHOPIFY_CUSTOMER_API ||
   'https://shopify.com/79280144711/account/customer/api/2025-01/graphql';
+
+const PANEL_HTML = readFileSync(new URL('./panel.html', import.meta.url), 'utf8');
 
 /* --------------------------- Base de datos --------------------------- */
 
@@ -77,6 +80,19 @@ async function auth(req, res, next) {
   }
 }
 
+/** Autenticación básica para el panel de administración. */
+function adminAuth(req, res, next) {
+  const m = /^Basic\s+(.+)$/i.exec(req.get('Authorization') || '');
+  if (m) {
+    const [user, pass] = Buffer.from(m[1], 'base64').toString().split(':');
+    if (process.env.ADMIN_PASSWORD && user === process.env.ADMIN_USER && pass === process.env.ADMIN_PASSWORD) {
+      return next();
+    }
+  }
+  res.set('WWW-Authenticate', 'Basic realm="Aromas - Notificaciones"');
+  res.status(401).send('Autenticación requerida.');
+}
+
 /* ------------------------------- App --------------------------------- */
 
 const app = express();
@@ -93,6 +109,40 @@ app.get('/reviews/:handle', async (req, res) => {
   } catch {
     res.json({ handle: req.params.handle, rating: null, count: 0, items: [] });
   }
+});
+
+/* --- Registro de tokens push (lo llama la app) --- */
+
+app.post('/push/register', async (req, res) => {
+  const { token, platform, prefs } = req.body || {};
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'token_required' });
+  }
+  await pool.query(
+    `INSERT INTO app_push_tokens (token, platform, prefs, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (token) DO UPDATE SET platform = $2, prefs = $3, updated_at = now()`,
+    [token, platform ?? null, JSON.stringify(prefs ?? {})],
+  );
+  res.json({ ok: true });
+});
+
+/* --- Panel de envío de notificaciones (protegido con usuario/contraseña) --- */
+
+app.get('/admin', adminAuth, (_req, res) => {
+  res.type('html').send(PANEL_HTML);
+});
+
+app.post('/admin/push', adminAuth, async (req, res) => {
+  const { title, body, category } = req.body || {};
+  if (!title || !body) return res.status(400).json({ error: 'title_body_required' });
+  const result = await sendPush(pool, {
+    title,
+    body,
+    category: typeof category === 'string' ? category : '',
+    data: { category: category || 'general' },
+  });
+  res.json({ ok: true, ...result });
 });
 
 /* --- Lista de deseos --- */
