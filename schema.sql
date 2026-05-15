@@ -31,3 +31,29 @@ CREATE TABLE IF NOT EXISTS app_push_tokens (
   prefs        jsonb       NOT NULL DEFAULT '{}'::jsonb,
   updated_at   timestamptz NOT NULL DEFAULT now()
 );
+
+-- Historial de notificaciones enviadas. Alimenta el buzón de la app y las
+-- estadísticas de apertura del panel.
+CREATE TABLE IF NOT EXISTS app_notifications (
+  id           bigserial   PRIMARY KEY,
+  title        text        NOT NULL,
+  body         text        NOT NULL,
+  category     text,
+  data         jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  audience     text        NOT NULL DEFAULT 'all',   -- 'all' | 'customer'
+  customer_id  text,                                  -- definido si audience = 'customer'
+  recipients   integer     NOT NULL DEFAULT 0,        -- dispositivos a los que se envió
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS app_notifications_created_idx
+  ON app_notifications (created_at DESC);
+
+-- Aperturas de cada notificación: marca las leídas y mide cuánta gente la abre.
+-- `reader` es el token push del dispositivo que la abrió.
+CREATE TABLE IF NOT EXISTS app_notification_reads (
+  notification_id bigint      NOT NULL REFERENCES app_notifications(id) ON DELETE CASCADE,
+  reader          text        NOT NULL,
+  opened_at       timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (notification_id, reader)
+);

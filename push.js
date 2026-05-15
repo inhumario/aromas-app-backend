@@ -45,3 +45,38 @@ export async function sendPush(pool, { title, body, category, data }) {
   }
   return { recipients: tokens.length, sent };
 }
+
+/**
+ * Guarda una notificación en el historial (tabla `app_notifications`).
+ * Lo lee el buzón de la app y las estadísticas del panel.
+ *
+ * @param {import('pg').Pool} pool
+ * @param {{title:string, body:string, category?:string, data?:object,
+ *          audience?:string, customerId?:string|null, recipients?:number}} msg
+ * @returns {Promise<number|null>} id de la notificación guardada
+ */
+export async function recordNotification(
+  pool,
+  { title, body, category, data, audience, customerId, recipients },
+) {
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO app_notifications (title, body, category, data, audience, customer_id, recipients)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+      [
+        title,
+        body,
+        category || null,
+        JSON.stringify(data || {}),
+        audience || 'all',
+        customerId || null,
+        recipients ?? 0,
+      ],
+    );
+    return rows[0]?.id ?? null;
+  } catch (err) {
+    console.error('recordNotification:', err.message);
+    return null;
+  }
+}

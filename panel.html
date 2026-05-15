@@ -9,7 +9,8 @@
   body {
     margin: 0; min-height: 100vh; background: #FAF5EB;
     font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-    color: #1A1A1A; display: flex; justify-content: center; padding: 32px 16px;
+    color: #1A1A1A; display: flex; flex-direction: column; align-items: center;
+    gap: 20px; padding: 32px 16px;
   }
   .card {
     background: #fff; border: 1px solid #E8DFD0; border-radius: 20px;
@@ -17,9 +18,11 @@
     box-shadow: 0 12px 40px rgba(20,15,5,0.08); height: fit-content;
   }
   h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 26px; margin: 0; }
+  h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 21px; margin: 0; }
   .sub { color: #7A7A7A; font-size: 13px; font-weight: 600; margin: 4px 0 22px; }
   label { display: block; font-size: 12px; font-weight: 800; letter-spacing: .6px;
     text-transform: uppercase; color: #7A7A7A; margin: 16px 0 6px; }
+  .hint { font-size: 11px; font-weight: 600; color: #A89F8C; margin: 5px 0 0; }
   input, textarea, select {
     width: 100%; border: 1px solid #E8DFD0; border-radius: 12px;
     padding: 12px 14px; font-size: 15px; font-family: inherit; color: #1A1A1A;
@@ -36,6 +39,19 @@
   #result { margin-top: 14px; font-size: 14px; font-weight: 600; text-align: center; min-height: 20px; }
   #result.ok { color: #2D7A3D; }
   #result.err { color: #C8443A; }
+  .item {
+    border: 1px solid #F0E8DB; border-radius: 14px; padding: 14px;
+    margin-top: 12px; background: #FCFAF5;
+  }
+  .item-title { font-weight: 800; font-size: 14px; }
+  .item-body { font-size: 13px; color: #4A4A4A; margin: 3px 0 9px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 6px; }
+  .stat {
+    font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 100px;
+    background: #fff; border: 1px solid #E8DFD0; color: #4A4A4A;
+  }
+  .stat.open { background: #E6F0F2; border-color: #BfD9DC; color: #2B818B; }
+  .empty { color: #A89F8C; font-size: 13px; font-weight: 600; margin-top: 14px; }
 </style>
 </head>
 <body>
@@ -58,8 +74,19 @@
   <label for="body">Mensaje</label>
   <textarea id="body" maxlength="200" rows="3" placeholder="Escribe el aviso que verán los clientes…"></textarea>
 
+  <label for="path">Enlace (opcional)</label>
+  <input id="path" maxlength="300" placeholder="Ej.: /coleccion/ofertas" />
+  <p class="hint">A dónde lleva al pulsar la notificación. Una ruta de la app
+    (/coleccion/ofertas, /producto/te-verde-bio, /blog) o una dirección https://</p>
+
   <button id="send">Enviar notificación</button>
   <div id="result"></div>
+</div>
+
+<div class="card">
+  <h2>Historial y aperturas</h2>
+  <div class="sub">Cuánta gente abre cada notificación</div>
+  <div id="history"><div class="empty">Cargando…</div></div>
 </div>
 
 <script>
@@ -69,6 +96,49 @@
     var r = $('result');
     r.textContent = msg;
     r.className = err ? 'err' : 'ok';
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function fmtDate(iso) {
+    try {
+      return new Date(iso).toLocaleString('es-ES', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+      });
+    } catch (e) { return ''; }
+  }
+
+  async function loadHistory() {
+    try {
+      var res = await fetch('/admin/notifications');
+      if (!res.ok) throw new Error();
+      var d = await res.json();
+      var items = d.items || [];
+      if (!items.length) {
+        $('history').innerHTML = '<div class="empty">Aún no has enviado ninguna notificación.</div>';
+        return;
+      }
+      $('history').innerHTML = items.map(function (n) {
+        var sent = n.recipients || 0;
+        var opens = n.opens || 0;
+        var pct = sent > 0 ? Math.round((opens / sent) * 100) : 0;
+        return '<div class="item">' +
+          '<div class="item-title">' + esc(n.title) + '</div>' +
+          '<div class="item-body">' + esc(n.body) + '</div>' +
+          '<div class="stats">' +
+            '<span class="stat">📅 ' + esc(fmtDate(n.created_at)) + '</span>' +
+            '<span class="stat">📨 Enviada a ' + sent + '</span>' +
+            '<span class="stat open">👀 Abierta por ' + opens + ' · ' + pct + '%</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    } catch (e) {
+      $('history').innerHTML = '<div class="empty">No se pudo cargar el historial.</div>';
+    }
   }
 
   $('send').onclick = async function () {
@@ -81,13 +151,18 @@
       var res = await fetch('/admin/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title, body: body, category: $('category').value }),
+        body: JSON.stringify({
+          title: title, body: body,
+          category: $('category').value, path: $('path').value.trim(),
+        }),
       });
       var d = await res.json();
       if (res.ok) {
         show('✅ Enviada a ' + d.sent + ' de ' + d.recipients + ' dispositivos.', false);
         $('title').value = '';
         $('body').value = '';
+        $('path').value = '';
+        loadHistory();
       } else {
         show('Error: ' + (d.error || res.status), true);
       }
@@ -96,6 +171,8 @@
     }
     $('send').disabled = false;
   };
+
+  loadHistory();
 </script>
 </body>
 </html>
