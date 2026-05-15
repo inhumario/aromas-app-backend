@@ -12,7 +12,7 @@ import cors from 'cors';
 import express from 'express';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { getReviewsForHandle } from './reviews.js';
+import { getAllRatings, getReviewsForHandle } from './reviews.js';
 import { sendPush } from './push.js';
 
 const { Pool } = pg;
@@ -108,6 +108,15 @@ app.get('/reviews/:handle', async (req, res) => {
     res.json(await getReviewsForHandle(req.params.handle));
   } catch {
     res.json({ handle: req.params.handle, rating: null, count: 0, items: [] });
+  }
+});
+
+// Nota media de todos los productos a la vez (para las tarjetas del catálogo).
+app.get('/ratings', async (_req, res) => {
+  try {
+    res.json(await getAllRatings());
+  } catch {
+    res.json({});
   }
 });
 
