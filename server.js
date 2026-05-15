@@ -12,6 +12,7 @@ import cors from 'cors';
 import express from 'express';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
+import { getReviewsForHandle } from './reviews.js';
 
 const { Pool } = pg;
 
@@ -83,6 +84,16 @@ app.use(cors());
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'aromas-app-backend' }));
+
+/* --- Valoraciones de producto (Trusted Shops) — público --- */
+
+app.get('/reviews/:handle', async (req, res) => {
+  try {
+    res.json(await getReviewsForHandle(req.params.handle));
+  } catch {
+    res.json({ handle: req.params.handle, rating: null, count: 0, items: [] });
+  }
+});
 
 /* --- Lista de deseos --- */
 
