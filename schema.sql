@@ -22,3 +22,12 @@ CREATE TABLE IF NOT EXISTS app_tasting_notes (
   updated_at   timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (customer_id, product_id)
 );
+
+-- Tokens de notificación push de cada dispositivo con la app instalada.
+CREATE TABLE IF NOT EXISTS app_push_tokens (
+  token        text        PRIMARY KEY,
+  customer_id  text,
+  platform     text,
+  prefs        jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
