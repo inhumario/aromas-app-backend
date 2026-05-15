@@ -77,23 +77,25 @@ async function refresh() {
   cache = { at: Date.now(), byHandle };
 }
 
+/** Asegura que la caché está fresca (refresco perezoso). */
+async function ensureFresh() {
+  if (Date.now() - cache.at <= TTL_MS) return;
+  if (!refreshing) {
+    refreshing = refresh()
+      .catch((err) => console.error('reviews refresh:', err.message))
+      .finally(() => {
+        refreshing = null;
+      });
+  }
+  // La primera vez (caché vacía) se espera; si ya hay datos, se sirve lo viejo.
+  if (cache.at === 0) await refreshing;
+}
+
 /** Valoración agregada de un producto por su handle de Shopify. */
 export async function getReviewsForHandle(handle) {
   const empty = { handle, rating: null, count: 0, items: [] };
   if (!configured()) return empty;
-
-  if (Date.now() - cache.at > TTL_MS) {
-    if (!refreshing) {
-      refreshing = refresh()
-        .catch((err) => console.error('reviews refresh:', err.message))
-        .finally(() => {
-          refreshing = null;
-        });
-    }
-    // La primera vez (cache vacía) esperamos; si ya hay cache, servimos lo viejo.
-    if (cache.at === 0) await refreshing;
-  }
-
+  await ensureFresh();
   const e = cache.byHandle[handle];
   if (!e || e.count === 0) return empty;
   return {
@@ -102,4 +104,17 @@ export async function getReviewsForHandle(handle) {
     count: e.count,
     items: e.items,
   };
+}
+
+/** Nota media y nº de reseñas de TODOS los productos: { handle: { rating, count } }. */
+export async function getAllRatings() {
+  if (!configured()) return {};
+  await ensureFresh();
+  const out = {};
+  for (const [handle, e] of Object.entries(cache.byHandle)) {
+    if (e.count > 0) {
+      out[handle] = { rating: Math.round((e.sum / e.count) * 10) / 10, count: e.count };
+    }
+  }
+  return out;
 }
