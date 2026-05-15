@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aromas de Té · Notificaciones</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #FAF5EB;
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    color: #1A1A1A; display: flex; justify-content: center; padding: 32px 16px;
+  }
+  .card {
+    background: #fff; border: 1px solid #E8DFD0; border-radius: 20px;
+    width: 100%; max-width: 480px; padding: 28px;
+    box-shadow: 0 12px 40px rgba(20,15,5,0.08); height: fit-content;
+  }
+  h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 26px; margin: 0; }
+  .sub { color: #7A7A7A; font-size: 13px; font-weight: 600; margin: 4px 0 22px; }
+  label { display: block; font-size: 12px; font-weight: 800; letter-spacing: .6px;
+    text-transform: uppercase; color: #7A7A7A; margin: 16px 0 6px; }
+  input, textarea, select {
+    width: 100%; border: 1px solid #E8DFD0; border-radius: 12px;
+    padding: 12px 14px; font-size: 15px; font-family: inherit; color: #1A1A1A;
+    background: #FAF5EB; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: #2B818B; }
+  textarea { resize: vertical; }
+  button {
+    width: 100%; margin-top: 22px; height: 50px; border: none; border-radius: 100px;
+    background: #2B818B; color: #fff; font-size: 15px; font-weight: 800;
+    cursor: pointer; font-family: inherit;
+  }
+  button:disabled { opacity: .5; }
+  #result { margin-top: 14px; font-size: 14px; font-weight: 600; text-align: center; min-height: 20px; }
+  #result.ok { color: #2D7A3D; }
+  #result.err { color: #C8443A; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Enviar notificación</h1>
+  <div class="sub">App Aromas de Té — aviso push a tus clientes</div>
+
+  <label for="category">Enviar a</label>
+  <select id="category">
+    <option value="">Todas las personas con la app</option>
+    <option value="offers">Ofertas y novedades</option>
+    <option value="blog">Nuevo artículo del blog</option>
+    <option value="orders">Estado de pedido</option>
+    <option value="reorder">Recordatorio de recompra</option>
+  </select>
+
+  <label for="title">Título</label>
+  <input id="title" maxlength="80" placeholder="Ej.: Nueva mezcla de invierno 🍵" />
+
+  <label for="body">Mensaje</label>
+  <textarea id="body" maxlength="200" rows="3" placeholder="Escribe el aviso que verán los clientes…"></textarea>
+
+  <button id="send">Enviar notificación</button>
+  <div id="result"></div>
+</div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+
+  function show(msg, err) {
+    var r = $('result');
+    r.textContent = msg;
+    r.className = err ? 'err' : 'ok';
+  }
+
+  $('send').onclick = async function () {
+    var title = $('title').value.trim();
+    var body = $('body').value.trim();
+    if (!title || !body) { show('Pon un título y un mensaje.', true); return; }
+    $('send').disabled = true;
+    show('Enviando…', false);
+    try {
+      var res = await fetch('/admin/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title, body: body, category: $('category').value }),
+      });
+      var d = await res.json();
+      if (res.ok) {
+        show('✅ Enviada a ' + d.sent + ' de ' + d.recipients + ' dispositivos.', false);
+        $('title').value = '';
+        $('body').value = '';
+      } else {
+        show('Error: ' + (d.error || res.status), true);
+      }
+    } catch (e) {
+      show('Error de conexión.', true);
+    }
+    $('send').disabled = false;
+  };
+</script>
+</body>
+</html>
