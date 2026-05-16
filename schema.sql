@@ -57,3 +57,12 @@ CREATE TABLE IF NOT EXISTS app_notification_reads (
   opened_at       timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (notification_id, reader)
 );
+
+-- Notificaciones que cada dispositivo ha borrado de su buzón.
+-- `reader` es el token push del dispositivo.
+CREATE TABLE IF NOT EXISTS app_notification_dismissed (
+  notification_id bigint      NOT NULL REFERENCES app_notifications(id) ON DELETE CASCADE,
+  reader          text        NOT NULL,
+  dismissed_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (notification_id, reader)
+);

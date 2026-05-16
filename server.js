@@ -171,8 +171,12 @@ app.get('/notifications', async (req, res) => {
          FROM app_notifications n
          LEFT JOIN app_notification_reads r
                 ON r.notification_id = n.id AND r.reader = $1
-        WHERE n.audience = 'all'
-           OR n.customer_id = (SELECT customer_id FROM app_push_tokens WHERE token = $1)
+        WHERE (n.audience = 'all'
+               OR n.customer_id = (SELECT customer_id FROM app_push_tokens WHERE token = $1))
+          AND NOT EXISTS (
+            SELECT 1 FROM app_notification_dismissed d
+             WHERE d.notification_id = n.id AND d.reader = $1
+          )
         ORDER BY n.created_at DESC
         LIMIT 60`,
       [token],
@@ -198,6 +202,36 @@ app.post('/notifications/read', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('POST /notifications/read:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Borra una notificación del buzón de este dispositivo (o todas con `all`).
+app.post('/notifications/dismiss', async (req, res) => {
+  const { token, id, all } = req.body || {};
+  if (!token) return res.status(400).json({ error: 'token_required' });
+  try {
+    if (all) {
+      await pool.query(
+        `INSERT INTO app_notification_dismissed (notification_id, reader)
+           SELECT n.id, $1 FROM app_notifications n
+            WHERE n.audience = 'all'
+               OR n.customer_id = (SELECT customer_id FROM app_push_tokens WHERE token = $1)
+         ON CONFLICT DO NOTHING`,
+        [token],
+      );
+    } else if (id) {
+      await pool.query(
+        `INSERT INTO app_notification_dismissed (notification_id, reader)
+           VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [id, token],
+      );
+    } else {
+      return res.status(400).json({ error: 'id_or_all_required' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /notifications/dismiss:', err.message);
     res.status(500).json({ error: 'server_error' });
   }
 });
