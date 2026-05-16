@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { getAllRatings, getReviewsForHandle } from './reviews.js';
 import { recordNotification, sendPush } from './push.js';
+import { handleOrderWebhook, verifyShopifyHmac } from './webhooks.js';
 
 const { Pool } = pg;
 
@@ -97,7 +98,15 @@ function adminAuth(req, res, next) {
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '64kb' }));
+app.use(
+  express.json({
+    limit: '256kb',
+    // Conserva el cuerpo en crudo para verificar la firma HMAC de los webhooks.
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'aromas-app-backend' }));
 
@@ -191,6 +200,21 @@ app.post('/notifications/read', async (req, res) => {
     console.error('POST /notifications/read:', err.message);
     res.status(500).json({ error: 'server_error' });
   }
+});
+
+/* --- Webhooks de Shopify: avisos automáticos del estado del pedido --- */
+
+app.post('/webhooks/shopify/order', (req, res) => {
+  const hmac = req.get('X-Shopify-Hmac-Sha256');
+  const topic = req.get('X-Shopify-Topic') || '';
+  if (!verifyShopifyHmac(req.rawBody, hmac, process.env.SHOPIFY_WEBHOOK_SECRET)) {
+    return res.status(401).send('invalid hmac');
+  }
+  // Shopify exige una respuesta rápida: se confirma y se procesa después.
+  res.json({ ok: true });
+  handleOrderWebhook(pool, topic, req.body || {}).catch((err) =>
+    console.error('webhook order:', err.message),
+  );
 });
 
 /* --- Panel de envío de notificaciones (protegido con usuario/contraseña) --- */

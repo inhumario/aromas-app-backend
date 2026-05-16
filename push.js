@@ -47,6 +47,39 @@ export async function sendPush(pool, { title, body, category, data }) {
 }
 
 /**
+ * Envía una notificación a una lista concreta de tokens (lotes de 100).
+ * Lo usan las notificaciones dirigidas a un cliente (estado de pedido).
+ *
+ * @param {string[]} tokens
+ * @param {{title:string, body:string, data?:object}} msg
+ */
+export async function sendPushToTokens(tokens, { title, body, data }) {
+  const valid = tokens.filter((t) => typeof t === 'string' && t.startsWith('ExponentPushToken'));
+  let sent = 0;
+  for (let i = 0; i < valid.length; i += 100) {
+    const batch = valid.slice(i, i + 100).map((to) => ({
+      to,
+      title,
+      body,
+      sound: 'default',
+      channelId: 'default',
+      data: data || {},
+    }));
+    try {
+      const res = await fetch(EXPO_PUSH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(batch),
+      });
+      if (res.ok) sent += batch.length;
+    } catch {
+      /* continúa con el resto de lotes */
+    }
+  }
+  return { sent };
+}
+
+/**
  * Guarda una notificación en el historial (tabla `app_notifications`).
  * Lo lee el buzón de la app y las estadísticas del panel.
  *
