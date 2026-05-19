@@ -33,12 +33,16 @@ popup de bienvenida** cuyo texto y destino edita Mario desde el panel `/admin`
 | Método | Ruta | Acceso | Para qué |
 |---|---|---|---|
 | GET | `/home/promo` | público | La app lee la pastilla y el popup al arrancar |
+| GET | `/home/promo/image` | público | Imagen del popup subida desde el panel |
 | GET | `/admin/promo` | `Basic` admin | El panel carga el contenido actual |
 | POST | `/admin/promo` | `Basic` admin | Guardar contenido (sube `revision`: el popup reaparece una vez) |
+| POST | `/admin/promo/image` | `Basic` admin | Subir la imagen del popup (cuerpo = fichero en crudo) |
+| DELETE | `/admin/promo/image` | `Basic` admin | Quitar la imagen del popup |
 
 Se guarda en la tabla `app_home_promo` (una sola fila). El popup se muestra
 **una vez por promoción**: la app recuerda la `revision` vista y solo lo enseña
-de nuevo cuando cambia.
+de nuevo cuando cambia. La imagen del popup se guarda como `bytea` en esa misma
+tabla y se sirve en `/home/promo/image`.
 
 ## Despliegue
 

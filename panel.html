@@ -3,19 +3,31 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Aromas de Té · Notificaciones</title>
+<title>Aromas de Té · Panel</title>
 <style>
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; background: #FAF5EB;
     font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
     color: #1A1A1A; display: flex; flex-direction: column; align-items: center;
-    gap: 20px; padding: 32px 16px;
+    gap: 16px; padding: 24px 16px 44px;
   }
+  /* Pestañas */
+  .tabs {
+    display: flex; gap: 5px; width: 100%; max-width: 480px;
+    background: #fff; border: 1px solid #E8DFD0; border-radius: 100px; padding: 5px;
+  }
+  .tab {
+    flex: 1; border: none; background: transparent; cursor: pointer; margin: 0;
+    height: 42px; border-radius: 100px; font-family: inherit;
+    font-size: 13px; font-weight: 800; color: #7A7A7A;
+  }
+  .tab.active { background: #2B818B; color: #fff; }
+  .panel { display: none; width: 100%; max-width: 480px; }
+  .panel.active { display: block; }
   .card {
     background: #fff; border: 1px solid #E8DFD0; border-radius: 20px;
-    width: 100%; max-width: 480px; padding: 28px;
-    box-shadow: 0 12px 40px rgba(20,15,5,0.08); height: fit-content;
+    width: 100%; padding: 28px; box-shadow: 0 12px 40px rgba(20,15,5,0.08);
   }
   h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 26px; margin: 0; }
   h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 21px; margin: 0; }
@@ -36,9 +48,10 @@
     cursor: pointer; font-family: inherit;
   }
   button:disabled { opacity: .5; }
-  #result, #promoResult {
+  #result, #promoResult, #imageResult {
     margin-top: 14px; font-size: 14px; font-weight: 600; text-align: center; min-height: 20px;
   }
+  #imageResult { margin-top: 8px; min-height: 16px; font-size: 13px; }
   .ok { color: #2D7A3D; }
   .err { color: #C8443A; }
   .switch { display: flex; align-items: center; gap: 10px; margin-top: 22px; }
@@ -63,102 +76,134 @@
   }
   .stat.open { background: #E6F0F2; border-color: #BfD9DC; color: #2B818B; }
   .empty { color: #A89F8C; font-size: 13px; font-weight: 600; margin-top: 14px; }
+  /* Subida de imagen */
+  .imgbox { display: flex; gap: 12px; align-items: stretch; margin-top: 4px; }
+  .thumb {
+    width: 108px; min-height: 66px; border-radius: 12px; border: 1px solid #E8DFD0;
+    background: #FAF5EB no-repeat center / cover; flex: none;
+    display: flex; align-items: center; justify-content: center; padding: 4px;
+    font-size: 11px; font-weight: 700; color: #A89F8C; text-align: center;
+  }
+  .imgbtns { display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center; }
+  .mini { width: 100%; height: 40px; margin: 0; font-size: 13px; }
+  .mini.ghost { background: #fff; color: #C8443A; border: 1px solid #E8DFD0; }
+  #popupImageFile { display: none; }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>Enviar notificación</h1>
-  <div class="sub">App Aromas de Té — aviso push a tus clientes</div>
 
-  <label for="category">Enviar a</label>
-  <select id="category">
-    <option value="">Todas las personas con la app</option>
-    <option value="offers">Ofertas y novedades</option>
-    <option value="blog">Nuevo artículo del blog</option>
-    <option value="orders">Estado de pedido</option>
-    <option value="reorder">Recordatorio de recompra</option>
-  </select>
-
-  <label for="title">Título</label>
-  <input id="title" maxlength="80" placeholder="Ej.: Nueva mezcla de invierno 🍵" />
-
-  <label for="body">Mensaje</label>
-  <textarea id="body" maxlength="200" rows="3" placeholder="Escribe el aviso que verán los clientes…"></textarea>
-
-  <label for="path">Enlace (opcional)</label>
-  <input id="path" maxlength="300" placeholder="Ej.: /coleccion/ofertas" />
-  <p class="hint">A dónde lleva al pulsar la notificación. Una ruta de la app
-    (/coleccion/ofertas, /producto/te-verde-bio, /blog) o una dirección https://</p>
-
-  <button id="send">Enviar notificación</button>
-  <div id="result"></div>
+<div class="tabs">
+  <button class="tab active" data-tab="enviar">Enviar</button>
+  <button class="tab" data-tab="enviadas">Enviadas</button>
+  <button class="tab" data-tab="inicio">Inicio</button>
 </div>
 
-<div class="card">
-  <h2>Historial y aperturas</h2>
-  <div class="sub">Cuánta gente abre cada notificación</div>
-  <div id="history"><div class="empty">Cargando…</div></div>
+<!-- Pestaña: enviar notificación -->
+<div class="panel active" id="panel-enviar">
+  <div class="card">
+    <h1>Enviar notificación</h1>
+    <div class="sub">App Aromas de Té — aviso push a tus clientes</div>
+
+    <label for="category">Enviar a</label>
+    <select id="category">
+      <option value="">Todas las personas con la app</option>
+      <option value="offers">Ofertas y novedades</option>
+      <option value="blog">Nuevo artículo del blog</option>
+      <option value="orders">Estado de pedido</option>
+      <option value="reorder">Recordatorio de recompra</option>
+    </select>
+
+    <label for="title">Título</label>
+    <input id="title" maxlength="80" placeholder="Ej.: Nueva mezcla de invierno 🍵" />
+
+    <label for="body">Mensaje</label>
+    <textarea id="body" maxlength="200" rows="3" placeholder="Escribe el aviso que verán los clientes…"></textarea>
+
+    <label for="path">Enlace (opcional)</label>
+    <input id="path" maxlength="300" placeholder="Ej.: /coleccion/ofertas-para-ti" />
+    <p class="hint">A dónde lleva al pulsar la notificación. Una ruta de la app
+      (/coleccion/ofertas-para-ti, /producto/te-verde-bio, /blog) o una dirección https://</p>
+
+    <button id="send">Enviar notificación</button>
+    <div id="result"></div>
+  </div>
 </div>
 
-<div class="card">
-  <h1>Contenido del inicio</h1>
-  <div class="sub">Pastilla de ofertas y popup de bienvenida — se actualiza sin publicar la app</div>
-
-  <div class="switch">
-    <input type="checkbox" id="pillEnabled" />
-    <label for="pillEnabled">Mostrar la pastilla de ofertas en el inicio</label>
+<!-- Pestaña: notificaciones enviadas -->
+<div class="panel" id="panel-enviadas">
+  <div class="card">
+    <h2>Notificaciones enviadas</h2>
+    <div class="sub">Cuánta gente abre cada notificación</div>
+    <div id="history"><div class="empty">Cargando…</div></div>
   </div>
+</div>
 
-  <label for="pillEmoji">Emoji (opcional)</label>
-  <input id="pillEmoji" maxlength="4" placeholder="Ej.: 🍵" />
+<!-- Pestaña: contenido del inicio -->
+<div class="panel" id="panel-inicio">
+  <div class="card">
+    <h1>Contenido del inicio</h1>
+    <div class="sub">Pastilla de ofertas y popup de bienvenida — se actualiza sin publicar la app</div>
 
-  <label for="pillLabel">Antetítulo</label>
-  <input id="pillLabel" maxlength="40" placeholder="Ej.: Oferta del mes" />
+    <div class="switch">
+      <input type="checkbox" id="pillEnabled" />
+      <label for="pillEnabled">Mostrar la pastilla de ofertas en el inicio</label>
+    </div>
 
-  <label for="pillText">Texto de la pastilla</label>
-  <input id="pillText" maxlength="80" placeholder="Ej.: 20% en infusiones de invierno" />
+    <label for="pillEmoji">Emoji (opcional)</label>
+    <input id="pillEmoji" maxlength="4" placeholder="Ej.: 🍵" />
 
-  <hr class="rule" />
+    <label for="pillLabel">Antetítulo</label>
+    <input id="pillLabel" maxlength="40" placeholder="Ej.: Oferta del mes" />
 
-  <div class="switch">
-    <input type="checkbox" id="popupEnabled" />
-    <label for="popupEnabled">Mostrar el mini popup al abrir la app</label>
+    <label for="pillText">Texto de la pastilla</label>
+    <input id="pillText" maxlength="80" placeholder="Ej.: 20% en infusiones de invierno" />
+
+    <hr class="rule" />
+
+    <div class="switch">
+      <input type="checkbox" id="popupEnabled" />
+      <label for="popupEnabled">Mostrar el mini popup al abrir la app</label>
+    </div>
+
+    <label for="popupTitle">Título del popup</label>
+    <input id="popupTitle" maxlength="60" placeholder="Ej.: Ofertas de mayo 🍵" />
+
+    <label for="popupBody">Mensaje del popup</label>
+    <textarea id="popupBody" maxlength="240" rows="3" placeholder="Escribe el aviso que verán al abrir la app…"></textarea>
+
+    <label>Imagen del popup (opcional)</label>
+    <div class="imgbox">
+      <div class="thumb" id="popupThumb">Sin imagen</div>
+      <div class="imgbtns">
+        <input type="file" id="popupImageFile" accept="image/*" />
+        <button type="button" class="mini" id="popupImageBtn">Subir imagen</button>
+        <button type="button" class="mini ghost" id="popupImageDel">Quitar</button>
+      </div>
+    </div>
+    <p class="hint">Tamaño recomendado: <b>1200 × 600 px</b> (horizontal, proporción 2:1).
+      JPG o PNG. Se recorta para rellenar el ancho del popup, así que deja lo importante
+      centrado. Se guarda al subirla.</p>
+    <div id="imageResult"></div>
+
+    <hr class="rule" />
+
+    <label for="promoLink">Enlace al pulsar (pastilla y popup)</label>
+    <input id="promoLink" maxlength="300" placeholder="Ej.: /coleccion/ofertas-para-ti" />
+    <p class="hint">Ruta de la app (/coleccion/ofertas-para-ti, /producto/te-verde-bio, /blog)
+      o una dirección https://. Déjalo vacío si no debe llevar a ningún sitio.</p>
+
+    <label for="promoCta">Texto del botón</label>
+    <input id="promoCta" maxlength="30" placeholder="Ej.: Ver ofertas" />
+
+    <button id="savePromo">Guardar contenido del inicio</button>
+    <p class="hint" style="text-align:center; margin-top:10px">
+      Al guardar, el popup vuelve a aparecer una vez a quien ya lo había visto.</p>
+    <div id="promoResult"></div>
   </div>
-
-  <label for="popupTitle">Título del popup</label>
-  <input id="popupTitle" maxlength="60" placeholder="Ej.: Ofertas de mayo 🍵" />
-
-  <label for="popupBody">Mensaje del popup</label>
-  <textarea id="popupBody" maxlength="240" rows="3" placeholder="Escribe el aviso que verán al abrir la app…"></textarea>
-
-  <label for="popupImage">Imagen del popup (opcional)</label>
-  <input id="popupImage" maxlength="400" placeholder="https://…/imagen.jpg" />
-  <p class="hint">Dirección de una imagen. Se muestra arriba del popup.</p>
-
-  <hr class="rule" />
-
-  <label for="promoLink">Enlace al pulsar (pastilla y popup)</label>
-  <input id="promoLink" maxlength="300" placeholder="Ej.: /coleccion/ofertas-para-ti" />
-  <p class="hint">Ruta de la app (/coleccion/ofertas-para-ti, /producto/te-verde-bio, /blog)
-    o una dirección https://. Déjalo vacío si no debe llevar a ningún sitio.</p>
-
-  <label for="promoCta">Texto del botón</label>
-  <input id="promoCta" maxlength="30" placeholder="Ej.: Ver ofertas" />
-
-  <button id="savePromo">Guardar contenido del inicio</button>
-  <p class="hint" style="text-align:center; margin-top:10px">
-    Al guardar, el popup vuelve a aparecer una vez a quien ya lo había visto.</p>
-  <div id="promoResult"></div>
 </div>
 
 <script>
   var $ = function (id) { return document.getElementById(id); };
-
-  function show(msg, err) {
-    var r = $('result');
-    r.textContent = msg;
-    r.className = err ? 'err' : 'ok';
-  }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -172,6 +217,30 @@
         day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
       });
     } catch (e) { return ''; }
+  }
+
+  /* --- Pestañas --- */
+
+  var historyLoaded = false;
+  document.querySelectorAll('.tab').forEach(function (tab) {
+    tab.onclick = function () {
+      var name = this.getAttribute('data-tab');
+      document.querySelectorAll('.tab').forEach(function (t) {
+        t.classList.toggle('active', t.getAttribute('data-tab') === name);
+      });
+      document.querySelectorAll('.panel').forEach(function (p) {
+        p.classList.toggle('active', p.id === 'panel-' + name);
+      });
+      if (name === 'enviadas' && !historyLoaded) { historyLoaded = true; loadHistory(); }
+    };
+  });
+
+  /* --- Enviar notificación --- */
+
+  function show(msg, err) {
+    var r = $('result');
+    r.textContent = msg;
+    r.className = err ? 'err' : 'ok';
   }
 
   async function loadHistory() {
@@ -224,6 +293,7 @@
         $('title').value = '';
         $('body').value = '';
         $('path').value = '';
+        historyLoaded = true;
         loadHistory();
       } else {
         show('Error: ' + (d.error || res.status), true);
@@ -234,14 +304,29 @@
     $('send').disabled = false;
   };
 
-  loadHistory();
-
   /* --- Contenido del inicio: pastilla de ofertas + popup --- */
 
   function showPromo(msg, err) {
     var r = $('promoResult');
     r.textContent = msg;
     r.className = err ? 'err' : 'ok';
+  }
+
+  function showImg(msg, err) {
+    var r = $('imageResult');
+    r.textContent = msg || '';
+    r.className = err ? 'err' : 'ok';
+  }
+
+  function setThumb(url) {
+    var t = $('popupThumb');
+    if (url) {
+      t.style.backgroundImage = 'url("' + url + '")';
+      t.textContent = '';
+    } else {
+      t.style.backgroundImage = 'none';
+      t.textContent = 'Sin imagen';
+    }
   }
 
   async function loadPromo() {
@@ -256,13 +341,49 @@
       $('popupEnabled').checked = !!p.popupEnabled;
       $('popupTitle').value = p.popupTitle || '';
       $('popupBody').value = p.popupBody || '';
-      $('popupImage').value = p.popupImage || '';
       $('promoLink').value = p.link || '';
       $('promoCta').value = p.ctaLabel || '';
+      setThumb(p.popupImage || '');
     } catch (e) {
       showPromo('No se pudo cargar el contenido actual.', true);
     }
   }
+
+  $('popupImageBtn').onclick = function () { $('popupImageFile').click(); };
+
+  $('popupImageFile').onchange = async function () {
+    var file = this.files && this.files[0];
+    if (!file) return;
+    showImg('Subiendo imagen…', false);
+    try {
+      var res = await fetch('/admin/promo/image', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok && d.url) {
+        setThumb(d.url);
+        showImg('✅ Imagen subida y guardada.', false);
+      } else {
+        showImg('Error al subir: ' + (d.error || res.status), true);
+      }
+    } catch (e) {
+      showImg('Error de conexión al subir la imagen.', true);
+    }
+    this.value = '';
+  };
+
+  $('popupImageDel').onclick = async function () {
+    showImg('Quitando…', false);
+    try {
+      var res = await fetch('/admin/promo/image', { method: 'DELETE' });
+      if (res.ok) { setThumb(''); showImg('Imagen quitada.', false); }
+      else { showImg('No se pudo quitar la imagen.', true); }
+    } catch (e) {
+      showImg('Error de conexión.', true);
+    }
+  };
 
   $('savePromo').onclick = async function () {
     $('savePromo').disabled = true;
@@ -279,7 +400,6 @@
           popupEnabled: $('popupEnabled').checked,
           popupTitle: $('popupTitle').value,
           popupBody: $('popupBody').value,
-          popupImage: $('popupImage').value,
           link: $('promoLink').value,
           ctaLabel: $('promoCta').value,
         }),

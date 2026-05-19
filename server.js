@@ -29,6 +29,9 @@ const CUSTOMER_API =
 
 const PANEL_HTML = readFileSync(new URL('./panel.html', import.meta.url), 'utf8');
 
+// URL pública del backend, para construir el enlace de la imagen del popup.
+const PUBLIC_BASE = process.env.PUBLIC_BASE_URL || 'https://app-api.aromasdete.com';
+
 /* --------------------------- Base de datos --------------------------- */
 
 async function initDb() {
@@ -96,6 +99,13 @@ function adminAuth(req, res, next) {
 
 /* -------------------- Contenido editable del inicio ------------------ */
 
+// Columnas de `app_home_promo` que se devuelven a la app/panel. NO incluye
+// `popup_image_data` (el binario de la imagen, que puede pesar): se sirve
+// aparte en GET /home/promo/image. `has_image` indica si hay imagen subida.
+const PROMO_COLS = `id, pill_enabled, pill_emoji, pill_label, pill_text,
+  popup_enabled, popup_title, popup_body, popup_image, link, cta_label,
+  revision, updated_at, (popup_image_data IS NOT NULL) AS has_image`;
+
 /** Normaliza un texto del formulario: vacío o no-texto -> null. */
 function cleanText(v) {
   const s = typeof v === 'string' ? v.trim() : '';
@@ -119,7 +129,11 @@ function promoToJson(row) {
     popupEnabled: !!row.popup_enabled,
     popupTitle: row.popup_title,
     popupBody: row.popup_body,
-    popupImage: row.popup_image,
+    // Imagen subida desde el panel; si no hay, la URL externa (campo antiguo).
+    // El `?v=` con la revisión refresca la caché cuando la imagen cambia.
+    popupImage: row.has_image
+      ? `${PUBLIC_BASE}/home/promo/image?v=${row.revision}`
+      : row.popup_image || null,
     link: row.link,
     ctaLabel: row.cta_label,
     revision: row.revision,
@@ -168,11 +182,28 @@ app.get('/ratings', async (_req, res) => {
 // si mostrar el mini popup de bienvenida.
 app.get('/home/promo', async (_req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM app_home_promo WHERE id = 1');
+    const { rows } = await pool.query(`SELECT ${PROMO_COLS} FROM app_home_promo WHERE id = 1`);
     res.json(promoToJson(rows[0]));
   } catch (err) {
     console.error('GET /home/promo:', err.message);
     res.json(promoToJson(null));
+  }
+});
+
+// Imagen del popup que Mario sube desde el panel. Pública (la pide la app).
+app.get('/home/promo/image', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT popup_image_data, popup_image_mime FROM app_home_promo WHERE id = 1',
+    );
+    const r = rows[0];
+    if (!r || !r.popup_image_data) return res.status(404).end();
+    res.set('Content-Type', r.popup_image_mime || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(r.popup_image_data);
+  } catch (err) {
+    console.error('GET /home/promo/image:', err.message);
+    res.status(500).end();
   }
 });
 
@@ -332,7 +363,7 @@ app.post('/admin/push', adminAuth, async (req, res) => {
 // Contenido editable del inicio: leer (para rellenar el formulario del panel).
 app.get('/admin/promo', adminAuth, async (_req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM app_home_promo WHERE id = 1');
+    const { rows } = await pool.query(`SELECT ${PROMO_COLS} FROM app_home_promo WHERE id = 1`);
     res.json(promoToJson(rows[0]));
   } catch (err) {
     console.error('GET /admin/promo:', err.message);
@@ -342,26 +373,70 @@ app.get('/admin/promo', adminAuth, async (_req, res) => {
 
 // Contenido editable del inicio: guardar. `revision` sube en cada guardado
 // para que el popup vuelva a aparecer una vez a quien ya lo había visto.
+// La imagen del popup se sube aparte (POST /admin/promo/image).
 app.post('/admin/promo', adminAuth, async (req, res) => {
   const b = req.body || {};
   try {
     const { rows } = await pool.query(
       `UPDATE app_home_promo SET
          pill_enabled = $1, pill_emoji = $2, pill_label = $3, pill_text = $4,
-         popup_enabled = $5, popup_title = $6, popup_body = $7, popup_image = $8,
-         link = $9, cta_label = $10,
+         popup_enabled = $5, popup_title = $6, popup_body = $7,
+         link = $8, cta_label = $9,
          revision = revision + 1, updated_at = now()
        WHERE id = 1
-       RETURNING *`,
+       RETURNING ${PROMO_COLS}`,
       [
         !!b.pillEnabled, cleanText(b.pillEmoji), cleanText(b.pillLabel), cleanText(b.pillText),
-        !!b.popupEnabled, cleanText(b.popupTitle), cleanText(b.popupBody), cleanText(b.popupImage),
+        !!b.popupEnabled, cleanText(b.popupTitle), cleanText(b.popupBody),
         cleanText(b.link), cleanText(b.ctaLabel),
       ],
     );
     res.json(promoToJson(rows[0]));
   } catch (err) {
     console.error('POST /admin/promo:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Subir la imagen del popup. El cuerpo es el fichero en crudo y el Content-Type
+// indica el tipo. Sube `revision` para que la app refresque la imagen.
+app.post(
+  '/admin/promo/image',
+  adminAuth,
+  express.raw({ type: () => true, limit: '8mb' }),
+  async (req, res) => {
+    const mime = (req.get('Content-Type') || '').split(';')[0].trim();
+    if (!mime.startsWith('image/')) return res.status(400).json({ error: 'not_an_image' });
+    if (!req.body || !req.body.length) return res.status(400).json({ error: 'empty_file' });
+    try {
+      const { rows } = await pool.query(
+        `UPDATE app_home_promo
+            SET popup_image_data = $1, popup_image_mime = $2,
+                revision = revision + 1, updated_at = now()
+          WHERE id = 1
+          RETURNING revision`,
+        [req.body, mime],
+      );
+      res.json({ ok: true, url: `${PUBLIC_BASE}/home/promo/image?v=${rows[0].revision}` });
+    } catch (err) {
+      console.error('POST /admin/promo/image:', err.message);
+      res.status(500).json({ error: 'server_error' });
+    }
+  },
+);
+
+// Quitar la imagen del popup.
+app.delete('/admin/promo/image', adminAuth, async (_req, res) => {
+  try {
+    await pool.query(
+      `UPDATE app_home_promo
+          SET popup_image_data = NULL, popup_image_mime = NULL,
+              revision = revision + 1, updated_at = now()
+        WHERE id = 1`,
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /admin/promo/image:', err.message);
     res.status(500).json({ error: 'server_error' });
   }
 });

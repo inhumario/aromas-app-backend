@@ -95,3 +95,9 @@ CREATE TABLE IF NOT EXISTS app_home_promo (
 
 -- La fila única siempre debe existir (deshabilitada por defecto).
 INSERT INTO app_home_promo (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Imagen del popup subida desde el panel (se sirve en GET /home/promo/image).
+-- Se añade con ALTER para tablas `app_home_promo` ya creadas en despliegues
+-- anteriores; es idempotente.
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_image_data bytea;
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_image_mime text;
