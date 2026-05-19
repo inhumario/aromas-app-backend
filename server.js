@@ -94,6 +94,39 @@ function adminAuth(req, res, next) {
   res.status(401).send('Autenticación requerida.');
 }
 
+/* -------------------- Contenido editable del inicio ------------------ */
+
+/** Normaliza un texto del formulario: vacío o no-texto -> null. */
+function cleanText(v) {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return s.length ? s : null;
+}
+
+/** Fila `app_home_promo` -> objeto JSON con claves camelCase para la app. */
+function promoToJson(row) {
+  if (!row) {
+    return {
+      pillEnabled: false, pillEmoji: null, pillLabel: null, pillText: null,
+      popupEnabled: false, popupTitle: null, popupBody: null, popupImage: null,
+      link: null, ctaLabel: null, revision: 0, updatedAt: null,
+    };
+  }
+  return {
+    pillEnabled: !!row.pill_enabled,
+    pillEmoji: row.pill_emoji,
+    pillLabel: row.pill_label,
+    pillText: row.pill_text,
+    popupEnabled: !!row.popup_enabled,
+    popupTitle: row.popup_title,
+    popupBody: row.popup_body,
+    popupImage: row.popup_image,
+    link: row.link,
+    ctaLabel: row.cta_label,
+    revision: row.revision,
+    updatedAt: row.updated_at,
+  };
+}
+
 /* ------------------------------- App --------------------------------- */
 
 const app = express();
@@ -126,6 +159,20 @@ app.get('/ratings', async (_req, res) => {
     res.json(await getAllRatings());
   } catch {
     res.json({});
+  }
+});
+
+/* --- Contenido editable del inicio (pastilla + popup) — público --- */
+
+// Lo llama la app al arrancar para pintar la pastilla de ofertas y decidir
+// si mostrar el mini popup de bienvenida.
+app.get('/home/promo', async (_req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM app_home_promo WHERE id = 1');
+    res.json(promoToJson(rows[0]));
+  } catch (err) {
+    console.error('GET /home/promo:', err.message);
+    res.json(promoToJson(null));
   }
 });
 
@@ -280,6 +327,43 @@ app.post('/admin/push', adminAuth, async (req, res) => {
     ]);
   }
   res.json({ ok: true, ...result });
+});
+
+// Contenido editable del inicio: leer (para rellenar el formulario del panel).
+app.get('/admin/promo', adminAuth, async (_req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM app_home_promo WHERE id = 1');
+    res.json(promoToJson(rows[0]));
+  } catch (err) {
+    console.error('GET /admin/promo:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Contenido editable del inicio: guardar. `revision` sube en cada guardado
+// para que el popup vuelva a aparecer una vez a quien ya lo había visto.
+app.post('/admin/promo', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  try {
+    const { rows } = await pool.query(
+      `UPDATE app_home_promo SET
+         pill_enabled = $1, pill_emoji = $2, pill_label = $3, pill_text = $4,
+         popup_enabled = $5, popup_title = $6, popup_body = $7, popup_image = $8,
+         link = $9, cta_label = $10,
+         revision = revision + 1, updated_at = now()
+       WHERE id = 1
+       RETURNING *`,
+      [
+        !!b.pillEnabled, cleanText(b.pillEmoji), cleanText(b.pillLabel), cleanText(b.pillText),
+        !!b.popupEnabled, cleanText(b.popupTitle), cleanText(b.popupBody), cleanText(b.popupImage),
+        cleanText(b.link), cleanText(b.ctaLabel),
+      ],
+    );
+    res.json(promoToJson(rows[0]));
+  } catch (err) {
+    console.error('POST /admin/promo:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 // Historial de notificaciones con estadísticas de apertura (para el panel).

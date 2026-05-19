@@ -66,3 +66,32 @@ CREATE TABLE IF NOT EXISTS app_notification_dismissed (
   dismissed_at    timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (notification_id, reader)
 );
+
+-- Contenido editable de la pantalla de inicio de la app: la pastilla de
+-- "ofertas del mes" y el mini popup de bienvenida. Una sola fila (id = 1);
+-- el panel de administración (/admin) la edita y la app la lee sin necesidad
+-- de publicar una versión nueva.
+CREATE TABLE IF NOT EXISTS app_home_promo (
+  id             integer     PRIMARY KEY DEFAULT 1,
+  -- Pastilla en la pantalla de inicio
+  pill_enabled   boolean     NOT NULL DEFAULT false,
+  pill_emoji     text,                              -- emoji opcional, ej. 🍵
+  pill_label     text,                              -- antetítulo, ej. "Oferta del mes"
+  pill_text      text,                              -- texto principal de la pastilla
+  -- Mini popup al abrir la app
+  popup_enabled  boolean     NOT NULL DEFAULT false,
+  popup_title    text,
+  popup_body     text,
+  popup_image    text,                              -- URL de imagen opcional
+  -- Común a pastilla y popup: destino al pulsar y texto del botón
+  link           text,                              -- ruta de la app (/coleccion/...) o https://
+  cta_label      text,                              -- texto del botón, ej. "Ver ofertas"
+  -- Sube en cada guardado; la app lo usa para mostrar el popup una sola vez
+  -- por promoción (cuando cambias el contenido, vuelve a aparecer una vez).
+  revision       integer     NOT NULL DEFAULT 0,
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT app_home_promo_singleton CHECK (id = 1)
+);
+
+-- La fila única siempre debe existir (deshabilitada por defecto).
+INSERT INTO app_home_promo (id) VALUES (1) ON CONFLICT (id) DO NOTHING;

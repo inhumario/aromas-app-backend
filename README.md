@@ -24,6 +24,22 @@ Todos (salvo `/health`) requieren cabecera `Authorization: <token de cliente Sho
 | PUT | `/me/tasting-notes/:productId` | Guardar nota (`{rating:'like'\|'dislike', note, handle, title, imageUrl}`) |
 | DELETE | `/me/tasting-notes/:productId` | Borrar nota |
 
+### Contenido editable del inicio
+
+La pantalla de inicio de la app tiene una **pastilla de ofertas** y un **mini
+popup de bienvenida** cuyo texto y destino edita Mario desde el panel `/admin`
+(usuario/contraseña), sin publicar una versión nueva de la app.
+
+| Método | Ruta | Acceso | Para qué |
+|---|---|---|---|
+| GET | `/home/promo` | público | La app lee la pastilla y el popup al arrancar |
+| GET | `/admin/promo` | `Basic` admin | El panel carga el contenido actual |
+| POST | `/admin/promo` | `Basic` admin | Guardar contenido (sube `revision`: el popup reaparece una vez) |
+
+Se guarda en la tabla `app_home_promo` (una sola fila). El popup se muestra
+**una vez por promoción**: la app recuerda la `revision` vista y solo lo enseña
+de nuevo cuando cambia.
+
 ## Despliegue
 
 Pensado para correr en **easypanel** (el panel de Aromas) como servicio Docker:
