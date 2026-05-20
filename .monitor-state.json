@@ -1,1 +1,35 @@
-{"asc":{},"play":{},"lastCheck":null}
+{
+  "asc": {
+    "versions": [],
+    "builds": []
+  },
+  "play": {
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.0",
+            "status": "completed",
+            "versions": [
+              "3"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.0",
+            "status": "completed",
+            "versions": [
+              "3"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "lastCheck": "2026-05-20T22:20:46Z"
+}
