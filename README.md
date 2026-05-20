@@ -23,6 +23,7 @@ Todos (salvo `/health`) requieren cabecera `Authorization: <token de cliente Sho
 | GET | `/me/tasting-notes` | Notas de cata del cliente |
 | PUT | `/me/tasting-notes/:productId` | Guardar nota (`{rating:'like'\|'dislike', note, handle, title, imageUrl}`) |
 | DELETE | `/me/tasting-notes/:productId` | Borrar nota |
+| DELETE | `/me/account` | Borrar la cuenta del cliente (deseos, notas, desvincular dispositivos). Registra la solicitud en `app_account_deletions` para que el cliente de Shopify se elimine después a mano. Requisito App Store 5.1.1(v). |
 
 ### Contenido editable del inicio
 

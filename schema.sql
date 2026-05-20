@@ -101,3 +101,12 @@ INSERT INTO app_home_promo (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 -- anteriores; es idempotente.
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_image_data bytea;
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_image_mime text;
+
+-- Solicitudes de borrado de cuenta iniciadas desde la app (App Store 5.1.1(v)).
+-- Al pulsar "Eliminar mi cuenta" la app borra todos los datos del cliente en
+-- este backend y deja una marca aquí. El cliente de Shopify lo limpia Mario
+-- a mano cuando le viene bien.
+CREATE TABLE IF NOT EXISTS app_account_deletions (
+  customer_id  text        PRIMARY KEY,
+  requested_at timestamptz NOT NULL DEFAULT now()
+);

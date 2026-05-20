@@ -526,6 +526,34 @@ app.delete('/me/tasting-notes/:productId', auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* --- Borrado de la cuenta del cliente desde la app (App Store 5.1.1(v)) --- */
+
+// Elimina todos los datos del cliente en este backend (lista de deseos, notas
+// de cata) y desvincula sus dispositivos de notificaciones. Registra la
+// solicitud para que Mario pueda eliminar después el cliente de Shopify a mano.
+// El borrado del cliente en Shopify NO se hace aquí.
+app.delete('/me/account', auth, async (req, res) => {
+  const customerId = req.customerId;
+  try {
+    await pool.query('DELETE FROM app_wishlist WHERE customer_id = $1', [customerId]);
+    await pool.query('DELETE FROM app_tasting_notes WHERE customer_id = $1', [customerId]);
+    await pool.query('UPDATE app_push_tokens SET customer_id = NULL WHERE customer_id = $1', [customerId]);
+    await pool.query(
+      `INSERT INTO app_account_deletions (customer_id) VALUES ($1)
+         ON CONFLICT (customer_id) DO UPDATE SET requested_at = now()`,
+      [customerId],
+    );
+    // Invalida la caché del token para que cualquier petición posterior con
+    // este token tenga que revalidarlo contra Shopify.
+    const token = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+    if (token) tokenCache.delete(token);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /me/account:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 /* --- Errores --- */
 
 app.use((err, _req, res, _next) => {
