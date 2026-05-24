@@ -1,7 +1,6 @@
 {
   "asc": {
-    "versions": [],
-    "builds": []
+    "error": "HTTP 403: Host not in allowlist"
   },
   "play": {
     "tracks": [
@@ -31,5 +30,5 @@
       }
     ]
   },
-  "lastCheck": "2026-05-24T12:11:31Z"
+  "lastCheck": "2026-05-24T14:21:04Z"
 }
