@@ -4,7 +4,32 @@
     "builds": []
   },
   "play": {
-    "error": "Method cannot contain non-token characters 'HTTPS://ANDROIDPUBLISHER.GOOGLEAPIS.COM/ANDROIDPUBLISHER/V3/APPLICATIONS/COM.AROMASDETE.APP/EDITS?ALT=JSON' (found at least ':')"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.0",
+            "status": "completed",
+            "versions": [
+              "3"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.0",
+            "status": "completed",
+            "versions": [
+              "3"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-05-27T08:14:55Z"
+  "lastCheck": "2026-05-27T08:16:27Z"
 }
