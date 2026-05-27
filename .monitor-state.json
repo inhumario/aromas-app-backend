@@ -4,32 +4,7 @@
     "builds": []
   },
   "play": {
-    "tracks": [
-      {
-        "track": "production",
-        "releases": [
-          {
-            "name": "1.0.0",
-            "status": "completed",
-            "versions": [
-              "3"
-            ]
-          }
-        ]
-      },
-      {
-        "track": "internal",
-        "releases": [
-          {
-            "name": "1.0.0",
-            "status": "completed",
-            "versions": [
-              "3"
-            ]
-          }
-        ]
-      }
-    ]
+    "error": "Error: No module named 'packaging'. The 'google-auth' library requires the extras installed for urllib3 network transport.\nPlease install the necessary dependencies using pip:\n  pip install google-auth[urllib3]\n\n(Note: Using '[urllib3]' ensures the specific dependencies needed for this feature are installed. We recommend running this command in your virtual environment.)"
   },
-  "lastCheck": "2026-05-27T06:10:58Z"
+  "lastCheck": "2026-05-27T08:12:59Z"
 }
