@@ -4,7 +4,7 @@
     "builds": []
   },
   "play": {
-    "error": "Error: No module named 'packaging'. The 'google-auth' library requires the extras installed for urllib3 network transport.\nPlease install the necessary dependencies using pip:\n  pip install google-auth[urllib3]\n\n(Note: Using '[urllib3]' ensures the specific dependencies needed for this feature are installed. We recommend running this command in your virtual environment.)"
+    "error": "HTTPConnection.__init__() got an unexpected keyword argument 'assert_hostname'"
   },
-  "lastCheck": "2026-05-27T08:12:59Z"
+  "lastCheck": "2026-05-27T08:13:59Z"
 }
