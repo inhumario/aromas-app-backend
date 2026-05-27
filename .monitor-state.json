@@ -4,7 +4,7 @@
     "builds": []
   },
   "play": {
-    "error": "HTTPConnection.__init__() got an unexpected keyword argument 'assert_hostname'"
+    "error": "Method cannot contain non-token characters 'HTTPS://ANDROIDPUBLISHER.GOOGLEAPIS.COM/ANDROIDPUBLISHER/V3/APPLICATIONS/COM.AROMASDETE.APP/EDITS?ALT=JSON' (found at least ':')"
   },
-  "lastCheck": "2026-05-27T08:13:59Z"
+  "lastCheck": "2026-05-27T08:14:55Z"
 }
