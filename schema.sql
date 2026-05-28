@@ -102,6 +102,12 @@ INSERT INTO app_home_promo (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_image_data bytea;
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_image_mime text;
 
+-- Enlaces separados para la pastilla y el popup (antes había un único `link`
+-- común). El campo `link` se mantiene como fallback para versiones de la app
+-- ya publicadas que solo conocen ese campo.
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_link text;
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_link text;
+
 -- Solicitudes de borrado de cuenta iniciadas desde la app (App Store 5.1.1(v)).
 -- Al pulsar "Eliminar mi cuenta" la app borra todos los datos del cliente en
 -- este backend y deja una marca aquí. El cliente de Shopify lo limpia Mario

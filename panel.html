@@ -23,11 +23,25 @@
     font-size: 13px; font-weight: 800; color: #7A7A7A;
   }
   .tab.active { background: #2B818B; color: #fff; }
+  /* Anchos por pestaña: Enviar/Enviadas siguen en columna estrecha;
+     Inicio en ordenador se ensancha a dos columnas. */
   .panel { display: none; width: 100%; max-width: 480px; }
   .panel.active { display: block; }
+  .panel#panel-inicio { max-width: 1080px; }
+  .grid-inicio {
+    display: grid; gap: 20px; grid-template-columns: 1fr;
+  }
+  @media (min-width: 920px) {
+    .grid-inicio { grid-template-columns: 1fr 1fr; align-items: start; }
+    .grid-inicio .full { grid-column: 1 / -1; }
+  }
   .card {
     background: #fff; border: 1px solid #E8DFD0; border-radius: 20px;
     width: 100%; padding: 28px; box-shadow: 0 12px 40px rgba(20,15,5,0.08);
+  }
+  @media (max-width: 600px) {
+    .card { padding: 22px; }
+    body { padding: 16px 12px 36px; }
   }
   h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 26px; margin: 0; }
   h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 21px; margin: 0; }
@@ -88,6 +102,31 @@
   .mini { width: 100%; height: 40px; margin: 0; font-size: 13px; }
   .mini.ghost { background: #fff; color: #C8443A; border: 1px solid #E8DFD0; }
   #popupImageFile { display: none; }
+  /* Caja de ayuda con ejemplos de enlaces */
+  .help {
+    background: #E6F0F2; border: 1px solid #BfD9DC; border-radius: 16px;
+    padding: 20px 22px; color: #1A3F44;
+  }
+  .help h3 {
+    font-family: inherit; font-size: 14px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .6px; margin: 0 0 8px;
+    color: #2B818B;
+  }
+  .help p { font-size: 13.5px; line-height: 1.55; margin: 6px 0; }
+  .help .ex {
+    display: grid; grid-template-columns: auto 1fr; gap: 6px 14px;
+    margin: 10px 0 4px; font-size: 13px;
+  }
+  .help .ex code {
+    background: #fff; border: 1px solid #BfD9DC; border-radius: 7px;
+    padding: 3px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px; color: #2B818B; white-space: nowrap;
+  }
+  .help .ex span { padding-top: 4px; color: #2B5159; }
+  .help .note {
+    margin-top: 10px; padding-top: 10px; border-top: 1px dashed #BfD9DC;
+    font-size: 12.5px; color: #4A6E73;
+  }
 </style>
 </head>
 <body>
@@ -121,8 +160,8 @@
 
     <label for="path">Enlace (opcional)</label>
     <input id="path" maxlength="300" placeholder="Ej.: /coleccion/ofertas-para-ti" />
-    <p class="hint">A dónde lleva al pulsar la notificación. Una ruta de la app
-      (/coleccion/ofertas-para-ti, /producto/te-verde-bio, /blog) o una dirección https://</p>
+    <p class="hint">A dónde lleva al pulsar la notificación. Mira la pestaña
+      <b>Inicio</b> para ver ejemplos completos de rutas válidas.</p>
 
     <button id="send">Enviar notificación</button>
     <div id="result"></div>
@@ -140,65 +179,109 @@
 
 <!-- Pestaña: contenido del inicio -->
 <div class="panel" id="panel-inicio">
-  <div class="card">
-    <h1>Contenido del inicio</h1>
-    <div class="sub">Pastilla de ofertas y popup de bienvenida — se actualiza sin publicar la app</div>
+  <div class="grid-inicio">
 
-    <div class="switch">
-      <input type="checkbox" id="pillEnabled" />
-      <label for="pillEnabled">Mostrar la pastilla de ofertas en el inicio</label>
-    </div>
+    <!-- Cabecera + caja de instrucciones (ancho completo) -->
+    <div class="full">
+      <div class="card help">
+        <h3>Cómo poner un enlace</h3>
+        <p>Cada enlace lleva al usuario a una pantalla <b>dentro de la app</b>.
+          Escríbelo siempre empezando por una barra <code>/</code>. También vale
+          una dirección web completa que empiece por <code>https://</code> (se abre fuera de la app).
+          Déjalo en blanco si la pastilla o el popup no deben llevar a ningún sitio.</p>
 
-    <label for="pillEmoji">Emoji (opcional)</label>
-    <input id="pillEmoji" maxlength="4" placeholder="Ej.: 🍵" />
+        <div class="ex">
+          <code>/tienda</code>            <span>Pantalla principal de la tienda.</span>
+          <code>/blog</code>              <span>Listado del blog.</span>
+          <code>/coleccion/ofertas-para-ti</code>   <span>Una colección concreta — usa el <i>handle</i> tal cual aparece en la URL de Shopify (lo que va detrás de <code style="background:transparent;border:none;padding:0;color:#2B5159">/collections/</code> en la web).</span>
+          <code>/producto/te-verde-bio</code>       <span>Un producto concreto — el <i>handle</i> es lo que va detrás de <code style="background:transparent;border:none;padding:0;color:#2B5159">/products/</code> en la URL de la web.</span>
+          <code>/blog/12345</code>        <span>Un artículo concreto del blog — el número del final es el ID del artículo en WordPress.</span>
+          <code>https://www.aromasdete.com/pages/sobre-nosotros</code>
+                                          <span>Cualquier página web (se abre en el navegador externo).</span>
+        </div>
 
-    <label for="pillLabel">Antetítulo</label>
-    <input id="pillLabel" maxlength="40" placeholder="Ej.: Oferta del mes" />
-
-    <label for="pillText">Texto de la pastilla</label>
-    <input id="pillText" maxlength="80" placeholder="Ej.: 20% en infusiones de invierno" />
-
-    <hr class="rule" />
-
-    <div class="switch">
-      <input type="checkbox" id="popupEnabled" />
-      <label for="popupEnabled">Mostrar el mini popup al abrir la app</label>
-    </div>
-
-    <label for="popupTitle">Título del popup</label>
-    <input id="popupTitle" maxlength="60" placeholder="Ej.: Ofertas de mayo 🍵" />
-
-    <label for="popupBody">Mensaje del popup</label>
-    <textarea id="popupBody" maxlength="240" rows="3" placeholder="Escribe el aviso que verán al abrir la app…"></textarea>
-
-    <label>Imagen del popup (opcional)</label>
-    <div class="imgbox">
-      <div class="thumb" id="popupThumb">Sin imagen</div>
-      <div class="imgbtns">
-        <input type="file" id="popupImageFile" accept="image/*" />
-        <button type="button" class="mini" id="popupImageBtn">Subir imagen</button>
-        <button type="button" class="mini ghost" id="popupImageDel">Quitar</button>
+        <p class="note"><b>Ejemplo paso a paso:</b> quiero que la pastilla lleve a la colección
+          “Ofertas del mes” que en mi web tiene la URL
+          <code style="background:#fff;border:1px solid #BfD9DC;padding:1px 6px;border-radius:5px">https://www.aromasdete.com/collections/ofertas-del-mes</code>.
+          → escribo en el campo de la pastilla: <code style="background:#fff;border:1px solid #BfD9DC;padding:1px 6px;border-radius:5px">/coleccion/ofertas-del-mes</code>.
+          (Fíjate: <i>coleccion</i> sin tilde y sin la <i>s</i> final, como ruta de la app.)</p>
       </div>
     </div>
-    <p class="hint">Tamaño recomendado: <b>1200 × 600 px</b> (horizontal, proporción 2:1).
-      JPG o PNG. Se recorta para rellenar el ancho del popup, así que deja lo importante
-      centrado. Se guarda al subirla.</p>
-    <div id="imageResult"></div>
 
-    <hr class="rule" />
+    <!-- Columna 1: pastilla de ofertas -->
+    <div class="card">
+      <h2>Pastilla de ofertas</h2>
+      <div class="sub">Aparece bajo el buscador en la pantalla de inicio.</div>
 
-    <label for="promoLink">Enlace al pulsar (pastilla y popup)</label>
-    <input id="promoLink" maxlength="300" placeholder="Ej.: /coleccion/ofertas-para-ti" />
-    <p class="hint">Ruta de la app (/coleccion/ofertas-para-ti, /producto/te-verde-bio, /blog)
-      o una dirección https://. Déjalo vacío si no debe llevar a ningún sitio.</p>
+      <div class="switch">
+        <input type="checkbox" id="pillEnabled" />
+        <label for="pillEnabled">Mostrar la pastilla en el inicio</label>
+      </div>
 
-    <label for="promoCta">Texto del botón</label>
-    <input id="promoCta" maxlength="30" placeholder="Ej.: Ver ofertas" />
+      <label for="pillEmoji">Emoji (opcional)</label>
+      <input id="pillEmoji" maxlength="4" placeholder="Ej.: 🍵" />
 
-    <button id="savePromo">Guardar contenido del inicio</button>
-    <p class="hint" style="text-align:center; margin-top:10px">
-      Al guardar, el popup vuelve a aparecer una vez a quien ya lo había visto.</p>
-    <div id="promoResult"></div>
+      <label for="pillLabel">Antetítulo</label>
+      <input id="pillLabel" maxlength="40" placeholder="Ej.: Oferta del mes" />
+
+      <label for="pillText">Texto de la pastilla</label>
+      <input id="pillText" maxlength="80" placeholder="Ej.: 20% en infusiones de invierno" />
+
+      <label for="pillLink">Enlace al pulsar la pastilla</label>
+      <input id="pillLink" maxlength="300" placeholder="Ej.: /coleccion/ofertas-para-ti" />
+      <p class="hint">A dónde lleva si el usuario pulsa la pastilla. Déjalo
+        vacío si la pastilla es solo informativa. (Mira la caja azul de arriba
+        para ejemplos.)</p>
+    </div>
+
+    <!-- Columna 2: popup -->
+    <div class="card">
+      <h2>Mini popup de bienvenida</h2>
+      <div class="sub">Aparece una sola vez al abrir la app, con tu mensaje.</div>
+
+      <div class="switch">
+        <input type="checkbox" id="popupEnabled" />
+        <label for="popupEnabled">Mostrar el mini popup al abrir la app</label>
+      </div>
+
+      <label for="popupTitle">Título del popup</label>
+      <input id="popupTitle" maxlength="60" placeholder="Ej.: Ofertas de mayo 🍵" />
+
+      <label for="popupBody">Mensaje del popup</label>
+      <textarea id="popupBody" maxlength="240" rows="3" placeholder="Escribe el aviso que verán al abrir la app…"></textarea>
+
+      <label>Imagen del popup (opcional)</label>
+      <div class="imgbox">
+        <div class="thumb" id="popupThumb">Sin imagen</div>
+        <div class="imgbtns">
+          <input type="file" id="popupImageFile" accept="image/*" />
+          <button type="button" class="mini" id="popupImageBtn">Subir imagen</button>
+          <button type="button" class="mini ghost" id="popupImageDel">Quitar</button>
+        </div>
+      </div>
+      <p class="hint">Tamaño recomendado: <b>1200 × 600 px</b> (horizontal, 2:1).
+        JPG o PNG. Se recorta para rellenar el ancho del popup, así que deja
+        lo importante centrado. Se guarda al subirla.</p>
+      <div id="imageResult"></div>
+
+      <label for="popupLink">Enlace al pulsar el botón del popup</label>
+      <input id="popupLink" maxlength="300" placeholder="Ej.: /producto/te-verde-bio" />
+      <p class="hint">A dónde lleva al pulsar el botón del popup. Si lo dejas
+        vacío, el popup mostrará un botón “Entendido” que solo lo cierra.</p>
+
+      <label for="promoCta">Texto del botón del popup</label>
+      <input id="promoCta" maxlength="30" placeholder="Ej.: Ver ofertas" />
+    </div>
+
+    <!-- Botón guardar (ancho completo) -->
+    <div class="full">
+      <div class="card" style="padding:22px 28px">
+        <button id="savePromo">Guardar contenido del inicio</button>
+        <p class="hint" style="text-align:center; margin-top:10px">
+          Al guardar, el popup vuelve a aparecer una vez a quien ya lo había visto.</p>
+        <div id="promoResult"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -341,7 +424,10 @@
       $('popupEnabled').checked = !!p.popupEnabled;
       $('popupTitle').value = p.popupTitle || '';
       $('popupBody').value = p.popupBody || '';
-      $('promoLink').value = p.link || '';
+      // Si todavía no hay pill_link / popup_link guardados, el backend devuelve
+      // el `link` viejo como fallback para los dos.
+      $('pillLink').value = p.pillLink || '';
+      $('popupLink').value = p.popupLink || '';
       $('promoCta').value = p.ctaLabel || '';
       setThumb(p.popupImage || '');
     } catch (e) {
@@ -400,7 +486,8 @@
           popupEnabled: $('popupEnabled').checked,
           popupTitle: $('popupTitle').value,
           popupBody: $('popupBody').value,
-          link: $('promoLink').value,
+          pillLink: $('pillLink').value,
+          popupLink: $('popupLink').value,
           ctaLabel: $('promoCta').value,
         }),
       });

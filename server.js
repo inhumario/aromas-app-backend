@@ -103,7 +103,8 @@ function adminAuth(req, res, next) {
 // `popup_image_data` (el binario de la imagen, que puede pesar): se sirve
 // aparte en GET /home/promo/image. `has_image` indica si hay imagen subida.
 const PROMO_COLS = `id, pill_enabled, pill_emoji, pill_label, pill_text,
-  popup_enabled, popup_title, popup_body, popup_image, link, cta_label,
+  popup_enabled, popup_title, popup_body, popup_image,
+  link, pill_link, popup_link, cta_label,
   revision, updated_at, (popup_image_data IS NOT NULL) AS has_image`;
 
 /** Normaliza un texto del formulario: vacío o no-texto -> null. */
@@ -118,9 +119,16 @@ function promoToJson(row) {
     return {
       pillEnabled: false, pillEmoji: null, pillLabel: null, pillText: null,
       popupEnabled: false, popupTitle: null, popupBody: null, popupImage: null,
-      link: null, ctaLabel: null, revision: 0, updatedAt: null,
+      link: null, pillLink: null, popupLink: null,
+      ctaLabel: null, revision: 0, updatedAt: null,
     };
   }
+  // `pill_link`/`popup_link` se introdujeron después de `link`. Si están
+  // vacíos, se cae al `link` viejo para compatibilidad. `link` se mantiene
+  // en la respuesta para que versiones de la app anteriores (que solo lo
+  // conocían a él) sigan funcionando con el destino más visible.
+  const pillLink = row.pill_link ?? row.link ?? null;
+  const popupLink = row.popup_link ?? row.link ?? null;
   return {
     pillEnabled: !!row.pill_enabled,
     pillEmoji: row.pill_emoji,
@@ -134,7 +142,9 @@ function promoToJson(row) {
     popupImage: row.has_image
       ? `${PUBLIC_BASE}/home/promo/image?v=${row.revision}`
       : row.popup_image || null,
-    link: row.link,
+    link: row.link ?? pillLink,
+    pillLink,
+    popupLink,
     ctaLabel: row.cta_label,
     revision: row.revision,
     updatedAt: row.updated_at,
@@ -376,19 +386,25 @@ app.get('/admin/promo', adminAuth, async (_req, res) => {
 // La imagen del popup se sube aparte (POST /admin/promo/image).
 app.post('/admin/promo', adminAuth, async (req, res) => {
   const b = req.body || {};
+  // `link` legacy: se sigue rellenando para que versiones de la app
+  // anteriores (que solo conocen ese campo) tengan un destino sensato.
+  // Prioridad: el de la pastilla (más visible que el del popup).
+  const pillLink = cleanText(b.pillLink);
+  const popupLink = cleanText(b.popupLink);
+  const legacyLink = pillLink ?? popupLink ?? cleanText(b.link);
   try {
     const { rows } = await pool.query(
       `UPDATE app_home_promo SET
          pill_enabled = $1, pill_emoji = $2, pill_label = $3, pill_text = $4,
          popup_enabled = $5, popup_title = $6, popup_body = $7,
-         link = $8, cta_label = $9,
+         link = $8, pill_link = $9, popup_link = $10, cta_label = $11,
          revision = revision + 1, updated_at = now()
        WHERE id = 1
        RETURNING ${PROMO_COLS}`,
       [
         !!b.pillEnabled, cleanText(b.pillEmoji), cleanText(b.pillLabel), cleanText(b.pillText),
         !!b.popupEnabled, cleanText(b.popupTitle), cleanText(b.popupBody),
-        cleanText(b.link), cleanText(b.ctaLabel),
+        legacyLink, pillLink, popupLink, cleanText(b.ctaLabel),
       ],
     );
     res.json(promoToJson(rows[0]));
