@@ -105,7 +105,7 @@ function adminAuth(req, res, next) {
 const PROMO_COLS = `id, pill_enabled, pill_emoji, pill_label, pill_text,
   popup_enabled, popup_title, popup_body, popup_image,
   link, pill_link, popup_link, cta_label,
-  revision, updated_at,
+  revision, updated_at, popup_cooldown_hours,
   (popup_image_data IS NOT NULL) AS has_image,
   (pill_image_data IS NOT NULL) AS has_pill_image`;
 
@@ -115,15 +115,37 @@ function cleanText(v) {
   return s.length ? s : null;
 }
 
-/** Fila `app_home_promo` -> objeto JSON con claves camelCase para la app. */
-function promoToJson(row) {
+/**
+ * Devuelve una revisión "efectiva" para que el popup se repita cada X horas.
+ * Se usa solo en la respuesta pública: hacemos pasar al cliente una revisión
+ * distinta cada cierto tiempo (un "bucket") aunque la promo no haya cambiado.
+ * Así las versiones de la app ya publicadas (que solo comparan revisiones)
+ * vuelven a mostrar el popup sin necesidad de actualizar el código.
+ */
+function effectiveRevision(row) {
+  const cooldown = Number(row.popup_cooldown_hours) || 0;
+  if (cooldown <= 0) return row.revision;
+  const updated = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+  const elapsedHours = (Date.now() - updated) / 3600000;
+  if (elapsedHours <= cooldown) return row.revision;
+  const bucket = Math.floor(elapsedHours / cooldown);
+  // Mezcla `revision` con el `bucket` en un entero estable y único.
+  return row.revision * 100000 + bucket;
+}
+
+/**
+ * Fila `app_home_promo` -> objeto JSON con claves camelCase. `forApp` aplica
+ * el cooldown del popup sobre la revisión; el panel debe llamarla con `false`
+ * para ver la revisión real.
+ */
+function promoToJson(row, forApp = true) {
   if (!row) {
     return {
       pillEnabled: false, pillEmoji: null, pillLabel: null, pillText: null,
       pillImage: null,
       popupEnabled: false, popupTitle: null, popupBody: null, popupImage: null,
       link: null, pillLink: null, popupLink: null,
-      ctaLabel: null, revision: 0, updatedAt: null,
+      ctaLabel: null, revision: 0, popupCooldownHours: null, updatedAt: null,
     };
   }
   // `pill_link`/`popup_link` se introdujeron después de `link`. Si están
@@ -153,7 +175,8 @@ function promoToJson(row) {
     pillLink,
     popupLink,
     ctaLabel: row.cta_label,
-    revision: row.revision,
+    revision: forApp ? effectiveRevision(row) : row.revision,
+    popupCooldownHours: row.popup_cooldown_hours ?? null,
     updatedAt: row.updated_at,
   };
 }
@@ -395,10 +418,12 @@ app.post('/admin/push', adminAuth, async (req, res) => {
 });
 
 // Contenido editable del inicio: leer (para rellenar el formulario del panel).
+// `forApp:false` para que el panel vea la revisión real, no la "rotada" por
+// el cooldown que se sirve a la app.
 app.get('/admin/promo', adminAuth, async (_req, res) => {
   try {
     const { rows } = await pool.query(`SELECT ${PROMO_COLS} FROM app_home_promo WHERE id = 1`);
-    res.json(promoToJson(rows[0]));
+    res.json(promoToJson(rows[0], false));
   } catch (err) {
     console.error('GET /admin/promo:', err.message);
     res.status(500).json({ error: 'server_error' });
@@ -416,12 +441,19 @@ app.post('/admin/promo', adminAuth, async (req, res) => {
   const pillLink = cleanText(b.pillLink);
   const popupLink = cleanText(b.popupLink);
   const legacyLink = pillLink ?? popupLink ?? cleanText(b.link);
+  // Cooldown: número entero >= 0 (horas) o NULL para "una sola vez".
+  let cooldown = null;
+  if (b.popupCooldownHours != null && b.popupCooldownHours !== '') {
+    const n = Number(b.popupCooldownHours);
+    if (Number.isFinite(n) && n >= 0) cooldown = Math.floor(n);
+  }
   try {
     const { rows } = await pool.query(
       `UPDATE app_home_promo SET
          pill_enabled = $1, pill_emoji = $2, pill_label = $3, pill_text = $4,
          popup_enabled = $5, popup_title = $6, popup_body = $7,
          link = $8, pill_link = $9, popup_link = $10, cta_label = $11,
+         popup_cooldown_hours = $12,
          revision = revision + 1, updated_at = now()
        WHERE id = 1
        RETURNING ${PROMO_COLS}`,
@@ -429,9 +461,10 @@ app.post('/admin/promo', adminAuth, async (req, res) => {
         !!b.pillEnabled, cleanText(b.pillEmoji), cleanText(b.pillLabel), cleanText(b.pillText),
         !!b.popupEnabled, cleanText(b.popupTitle), cleanText(b.popupBody),
         legacyLink, pillLink, popupLink, cleanText(b.ctaLabel),
+        cooldown,
       ],
     );
-    res.json(promoToJson(rows[0]));
+    res.json(promoToJson(rows[0], false));
   } catch (err) {
     console.error('POST /admin/promo:', err.message);
     res.status(500).json({ error: 'server_error' });

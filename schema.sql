@@ -113,6 +113,12 @@ ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_link text;
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_image_data bytea;
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_image_mime text;
 
+-- Cada cuántas horas vuelve a aparecer el popup a quien ya lo había visto,
+-- aunque la promoción no haya cambiado. NULL o 0 = una sola vez por
+-- promoción (comportamiento original). Ejemplos: 24 = una vez al día,
+-- 72 = cada 3 días, 168 = una vez por semana.
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_cooldown_hours integer;
+
 -- Solicitudes de borrado de cuenta iniciadas desde la app (App Store 5.1.1(v)).
 -- Al pulsar "Eliminar mi cuenta" la app borra todos los datos del cliente en
 -- este backend y deja una marca aquí. El cliente de Shopify lo limpia Mario

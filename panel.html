@@ -262,6 +262,20 @@
         <label for="popupEnabled">Mostrar el mini popup al abrir la app</label>
       </div>
 
+      <label for="popupCooldownHours">Repetir el popup</label>
+      <select id="popupCooldownHours">
+        <option value="0">Una sola vez por promoción</option>
+        <option value="6">Cada 6 horas</option>
+        <option value="12">Cada 12 horas</option>
+        <option value="24" selected>Una vez al día</option>
+        <option value="72">Cada 3 días</option>
+        <option value="168">Una vez por semana</option>
+      </select>
+      <p class="hint">Al usuario que ya cerró el popup se le vuelve a mostrar
+        pasado ese tiempo, aunque la promoción no haya cambiado. Si eliges
+        “una sola vez por promoción”, no vuelve a aparecer hasta que edites
+        y guardes la promoción.</p>
+
       <label for="popupTitle">Título del popup</label>
       <input id="popupTitle" maxlength="60" placeholder="Ej.: Ofertas de mayo 🍵" />
 
@@ -444,6 +458,7 @@
       $('popupEnabled').checked = !!p.popupEnabled;
       $('popupTitle').value = p.popupTitle || '';
       $('popupBody').value = p.popupBody || '';
+      $('popupCooldownHours').value = String(p.popupCooldownHours ?? 24);
       // Si todavía no hay pill_link / popup_link guardados, el backend devuelve
       // el `link` viejo como fallback para los dos.
       $('pillLink').value = p.pillLink || '';
@@ -549,6 +564,7 @@
           popupEnabled: $('popupEnabled').checked,
           popupTitle: $('popupTitle').value,
           popupBody: $('popupBody').value,
+          popupCooldownHours: $('popupCooldownHours').value,
           pillLink: $('pillLink').value,
           popupLink: $('popupLink').value,
           ctaLabel: $('promoCta').value,
