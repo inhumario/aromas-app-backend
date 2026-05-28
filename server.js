@@ -106,8 +106,18 @@ const PROMO_COLS = `id, pill_enabled, pill_emoji, pill_label, pill_text,
   popup_enabled, popup_title, popup_body, popup_image,
   link, pill_link, popup_link, cta_label,
   revision, updated_at, popup_cooldown_hours,
+  pill_starts_at, pill_ends_at, popup_starts_at, popup_ends_at,
   (popup_image_data IS NOT NULL) AS has_image,
   (pill_image_data IS NOT NULL) AS has_pill_image`;
+
+/** ¿Estamos dentro de la ventana [startsAt, endsAt]? NULL en cada extremo
+ *  significa "sin límite por ese lado". */
+function withinWindow(startsAt, endsAt) {
+  const now = Date.now();
+  if (startsAt && now < new Date(startsAt).getTime()) return false;
+  if (endsAt && now > new Date(endsAt).getTime()) return false;
+  return true;
+}
 
 /** Normaliza un texto del formulario: vacío o no-texto -> null. */
 function cleanText(v) {
@@ -142,8 +152,9 @@ function promoToJson(row, forApp = true) {
   if (!row) {
     return {
       pillEnabled: false, pillEmoji: null, pillLabel: null, pillText: null,
-      pillImage: null,
+      pillImage: null, pillStartsAt: null, pillEndsAt: null,
       popupEnabled: false, popupTitle: null, popupBody: null, popupImage: null,
+      popupStartsAt: null, popupEndsAt: null,
       link: null, pillLink: null, popupLink: null,
       ctaLabel: null, revision: 0, popupCooldownHours: null, updatedAt: null,
     };
@@ -154,8 +165,17 @@ function promoToJson(row, forApp = true) {
   // conocían a él) sigan funcionando con el destino más visible.
   const pillLink = row.pill_link ?? row.link ?? null;
   const popupLink = row.popup_link ?? row.link ?? null;
+  // Para la app, los flags `pillEnabled` y `popupEnabled` ya vienen filtrados
+  // por la ventana de programación; para el panel, se devuelve el valor
+  // bruto del switch (forApp=false).
+  const pillEnabledFlag = !!row.pill_enabled;
+  const popupEnabledFlag = !!row.popup_enabled;
+  const pillEffective = pillEnabledFlag &&
+    (!forApp || withinWindow(row.pill_starts_at, row.pill_ends_at));
+  const popupEffective = popupEnabledFlag &&
+    (!forApp || withinWindow(row.popup_starts_at, row.popup_ends_at));
   return {
-    pillEnabled: !!row.pill_enabled,
+    pillEnabled: pillEffective,
     pillEmoji: row.pill_emoji,
     pillLabel: row.pill_label,
     pillText: row.pill_text,
@@ -163,7 +183,9 @@ function promoToJson(row, forApp = true) {
     pillImage: row.has_pill_image
       ? `${PUBLIC_BASE}/home/promo/pill-image?v=${row.revision}`
       : null,
-    popupEnabled: !!row.popup_enabled,
+    pillStartsAt: row.pill_starts_at,
+    pillEndsAt: row.pill_ends_at,
+    popupEnabled: popupEffective,
     popupTitle: row.popup_title,
     popupBody: row.popup_body,
     // Imagen subida desde el panel; si no hay, la URL externa (campo antiguo).
@@ -171,6 +193,8 @@ function promoToJson(row, forApp = true) {
     popupImage: row.has_image
       ? `${PUBLIC_BASE}/home/promo/image?v=${row.revision}`
       : row.popup_image || null,
+    popupStartsAt: row.popup_starts_at,
+    popupEndsAt: row.popup_ends_at,
     link: row.link ?? pillLink,
     pillLink,
     popupLink,
@@ -433,15 +457,84 @@ app.get('/admin/promo', adminAuth, async (_req, res) => {
 // Contenido editable del inicio: guardar. `revision` sube en cada guardado
 // para que el popup vuelva a aparecer una vez a quien ya lo había visto.
 // La imagen del popup se sube aparte (POST /admin/promo/image).
+/** Parsea ISO/datetime-local del panel a Date|null. Vacío -> null. */
+function parseDateOrNull(v) {
+  if (v == null || v === '') return null;
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+/** Recalcula el campo `link` legacy a partir de pill_link/popup_link de BD. */
+async function syncLegacyLink() {
+  await pool.query(
+    `UPDATE app_home_promo SET link = COALESCE(pill_link, popup_link, link) WHERE id = 1`,
+  );
+}
+
+// Guarda SOLO los campos de la pastilla de ofertas.
+app.post('/admin/promo/pill', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  const pillLink = cleanText(b.pillLink);
+  try {
+    const { rows } = await pool.query(
+      `UPDATE app_home_promo SET
+         pill_enabled = $1, pill_emoji = $2, pill_label = $3, pill_text = $4,
+         pill_link = $5, pill_starts_at = $6, pill_ends_at = $7,
+         revision = revision + 1, updated_at = now()
+       WHERE id = 1
+       RETURNING ${PROMO_COLS}`,
+      [
+        !!b.pillEnabled, cleanText(b.pillEmoji), cleanText(b.pillLabel), cleanText(b.pillText),
+        pillLink, parseDateOrNull(b.pillStartsAt), parseDateOrNull(b.pillEndsAt),
+      ],
+    );
+    await syncLegacyLink();
+    res.json(promoToJson(rows[0], false));
+  } catch (err) {
+    console.error('POST /admin/promo/pill:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Guarda SOLO los campos del popup de bienvenida.
+app.post('/admin/promo/popup', adminAuth, async (req, res) => {
+  const b = req.body || {};
+  const popupLink = cleanText(b.popupLink);
+  let cooldown = null;
+  if (b.popupCooldownHours != null && b.popupCooldownHours !== '') {
+    const n = Number(b.popupCooldownHours);
+    if (Number.isFinite(n) && n >= 0) cooldown = Math.floor(n);
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE app_home_promo SET
+         popup_enabled = $1, popup_title = $2, popup_body = $3,
+         popup_link = $4, cta_label = $5, popup_cooldown_hours = $6,
+         popup_starts_at = $7, popup_ends_at = $8,
+         revision = revision + 1, updated_at = now()
+       WHERE id = 1
+       RETURNING ${PROMO_COLS}`,
+      [
+        !!b.popupEnabled, cleanText(b.popupTitle), cleanText(b.popupBody),
+        popupLink, cleanText(b.ctaLabel), cooldown,
+        parseDateOrNull(b.popupStartsAt), parseDateOrNull(b.popupEndsAt),
+      ],
+    );
+    await syncLegacyLink();
+    res.json(promoToJson(rows[0], false));
+  } catch (err) {
+    console.error('POST /admin/promo/popup:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Endpoint legacy (compat): guarda ambos a la vez. El panel nuevo ya no lo
+// usa, pero se mantiene por si algo lo invocara.
 app.post('/admin/promo', adminAuth, async (req, res) => {
   const b = req.body || {};
-  // `link` legacy: se sigue rellenando para que versiones de la app
-  // anteriores (que solo conocen ese campo) tengan un destino sensato.
-  // Prioridad: el de la pastilla (más visible que el del popup).
   const pillLink = cleanText(b.pillLink);
   const popupLink = cleanText(b.popupLink);
   const legacyLink = pillLink ?? popupLink ?? cleanText(b.link);
-  // Cooldown: número entero >= 0 (horas) o NULL para "una sola vez".
   let cooldown = null;
   if (b.popupCooldownHours != null && b.popupCooldownHours !== '') {
     const n = Number(b.popupCooldownHours);

@@ -250,6 +250,18 @@
       <p class="hint">A dónde lleva si el usuario pulsa la pastilla. Déjalo
         vacío si la pastilla es solo informativa. (Mira la caja azul de arriba
         para ejemplos.)</p>
+
+      <hr class="rule" />
+      <label for="pillStartsAt">Mostrar desde (opcional)</label>
+      <input type="datetime-local" id="pillStartsAt" />
+      <label for="pillEndsAt">Mostrar hasta (opcional)</label>
+      <input type="datetime-local" id="pillEndsAt" />
+      <p class="hint">Si dejas las fechas vacías, la pastilla se ve siempre
+        que el switch esté activado. Si rellenas alguna, solo aparece en
+        ese intervalo (hora local).</p>
+
+      <button id="savePill">Guardar pastilla</button>
+      <div id="pillResult" style="margin-top:12px; min-height:18px; font-size:14px; font-weight:600; text-align:center;"></div>
     </div>
 
     <!-- Columna 2: popup -->
@@ -303,16 +315,19 @@
 
       <label for="promoCta">Texto del botón del popup</label>
       <input id="promoCta" maxlength="30" placeholder="Ej.: Ver ofertas" />
-    </div>
 
-    <!-- Botón guardar (ancho completo) -->
-    <div class="full">
-      <div class="card" style="padding:22px 28px">
-        <button id="savePromo">Guardar contenido del inicio</button>
-        <p class="hint" style="text-align:center; margin-top:10px">
-          Al guardar, el popup vuelve a aparecer una vez a quien ya lo había visto.</p>
-        <div id="promoResult"></div>
-      </div>
+      <hr class="rule" />
+      <label for="popupStartsAt">Mostrar desde (opcional)</label>
+      <input type="datetime-local" id="popupStartsAt" />
+      <label for="popupEndsAt">Mostrar hasta (opcional)</label>
+      <input type="datetime-local" id="popupEndsAt" />
+      <p class="hint">Si dejas las fechas vacías, el popup se muestra siempre
+        que el switch esté activado. Si rellenas alguna, solo aparece en
+        ese intervalo (hora local). Al guardar, el popup vuelve a aparecer
+        una vez a quien ya lo había visto.</p>
+
+      <button id="savePopup">Guardar popup</button>
+      <div id="popupResult" style="margin-top:12px; min-height:18px; font-size:14px; font-weight:600; text-align:center;"></div>
     </div>
   </div>
 </div>
@@ -421,10 +436,32 @@
 
   /* --- Contenido del inicio: pastilla de ofertas + popup --- */
 
-  function showPromo(msg, err) {
-    var r = $('promoResult');
+  function showPill(msg, err) {
+    var r = $('pillResult');
     r.textContent = msg;
     r.className = err ? 'err' : 'ok';
+  }
+  function showPopup(msg, err) {
+    var r = $('popupResult');
+    r.textContent = msg;
+    r.className = err ? 'err' : 'ok';
+  }
+
+  /** ISO (UTC) -> "YYYY-MM-DDTHH:MM" en hora local, para inputs datetime-local. */
+  function isoToLocalInput(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (!isFinite(d.getTime())) return '';
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+      + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /** "YYYY-MM-DDTHH:MM" (hora local) -> ISO en UTC para enviar al backend. */
+  function localInputToIso(v) {
+    if (!v) return null;
+    var d = new Date(v);
+    return isFinite(d.getTime()) ? d.toISOString() : null;
   }
 
   function showImg(msg, err) {
@@ -455,10 +492,14 @@
       $('pillEmoji').value = p.pillEmoji || '';
       $('pillLabel').value = p.pillLabel || '';
       $('pillText').value = p.pillText || '';
+      $('pillStartsAt').value = isoToLocalInput(p.pillStartsAt);
+      $('pillEndsAt').value = isoToLocalInput(p.pillEndsAt);
       $('popupEnabled').checked = !!p.popupEnabled;
       $('popupTitle').value = p.popupTitle || '';
       $('popupBody').value = p.popupBody || '';
       $('popupCooldownHours').value = String(p.popupCooldownHours ?? 24);
+      $('popupStartsAt').value = isoToLocalInput(p.popupStartsAt);
+      $('popupEndsAt').value = isoToLocalInput(p.popupEndsAt);
       // Si todavía no hay pill_link / popup_link guardados, el backend devuelve
       // el `link` viejo como fallback para los dos.
       $('pillLink').value = p.pillLink || '';
@@ -549,11 +590,11 @@
     }
   };
 
-  $('savePromo').onclick = async function () {
-    $('savePromo').disabled = true;
-    showPromo('Guardando…', false);
+  $('savePill').onclick = async function () {
+    $('savePill').disabled = true;
+    showPill('Guardando pastilla…', false);
     try {
-      var res = await fetch('/admin/promo', {
+      var res = await fetch('/admin/promo/pill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -561,25 +602,51 @@
           pillEmoji: $('pillEmoji').value,
           pillLabel: $('pillLabel').value,
           pillText: $('pillText').value,
-          popupEnabled: $('popupEnabled').checked,
-          popupTitle: $('popupTitle').value,
-          popupBody: $('popupBody').value,
-          popupCooldownHours: $('popupCooldownHours').value,
           pillLink: $('pillLink').value,
-          popupLink: $('popupLink').value,
-          ctaLabel: $('promoCta').value,
+          pillStartsAt: localInputToIso($('pillStartsAt').value),
+          pillEndsAt: localInputToIso($('pillEndsAt').value),
         }),
       });
       if (res.ok) {
-        showPromo('✅ Guardado. Los cambios se ven en la app en unos minutos.', false);
+        showPill('✅ Pastilla guardada. Los cambios se ven en la app en unos minutos.', false);
       } else {
         var d = await res.json().catch(function () { return {}; });
-        showPromo('Error: ' + (d.error || res.status), true);
+        showPill('Error: ' + (d.error || res.status), true);
       }
     } catch (e) {
-      showPromo('Error de conexión.', true);
+      showPill('Error de conexión.', true);
     }
-    $('savePromo').disabled = false;
+    $('savePill').disabled = false;
+  };
+
+  $('savePopup').onclick = async function () {
+    $('savePopup').disabled = true;
+    showPopup('Guardando popup…', false);
+    try {
+      var res = await fetch('/admin/promo/popup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          popupEnabled: $('popupEnabled').checked,
+          popupTitle: $('popupTitle').value,
+          popupBody: $('popupBody').value,
+          popupLink: $('popupLink').value,
+          ctaLabel: $('promoCta').value,
+          popupCooldownHours: $('popupCooldownHours').value,
+          popupStartsAt: localInputToIso($('popupStartsAt').value),
+          popupEndsAt: localInputToIso($('popupEndsAt').value),
+        }),
+      });
+      if (res.ok) {
+        showPopup('✅ Popup guardado. Los cambios se ven en la app en unos minutos.', false);
+      } else {
+        var d = await res.json().catch(function () { return {}; });
+        showPopup('Error: ' + (d.error || res.status), true);
+      }
+    } catch (e) {
+      showPopup('Error de conexión.', true);
+    }
+    $('savePopup').disabled = false;
   };
 
   loadPromo();

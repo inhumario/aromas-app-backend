@@ -119,6 +119,15 @@ ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_image_mime text;
 -- 72 = cada 3 días, 168 = una vez por semana.
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_cooldown_hours integer;
 
+-- Programación temporal: ventanas en que cada elemento está activo. NULL
+-- en starts_at = desde ya; NULL en ends_at = sin fecha de fin. La app no
+-- los ve directamente: el backend resuelve y devuelve `pillEnabled` /
+-- `popupEnabled` ya filtrados por la ventana de tiempo actual.
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_starts_at timestamptz;
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_ends_at timestamptz;
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_starts_at timestamptz;
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_ends_at timestamptz;
+
 -- Solicitudes de borrado de cuenta iniciadas desde la app (App Store 5.1.1(v)).
 -- Al pulsar "Eliminar mi cuenta" la app borra todos los datos del cliente en
 -- este backend y deja una marca aquí. El cliente de Shopify lo limpia Mario
