@@ -108,6 +108,11 @@ ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_image_mime text;
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_link text;
 ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS popup_link text;
 
+-- Imagen de la pastilla (opcional). Se sirve en GET /home/promo/pill-image.
+-- Si no hay, en la app se cae al emoji y, si no, al icono por defecto.
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_image_data bytea;
+ALTER TABLE app_home_promo ADD COLUMN IF NOT EXISTS pill_image_mime text;
+
 -- Solicitudes de borrado de cuenta iniciadas desde la app (App Store 5.1.1(v)).
 -- Al pulsar "Eliminar mi cuenta" la app borra todos los datos del cliente en
 -- este backend y deja una marca aquí. El cliente de Shopify lo limpia Mario

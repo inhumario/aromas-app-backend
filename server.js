@@ -105,7 +105,9 @@ function adminAuth(req, res, next) {
 const PROMO_COLS = `id, pill_enabled, pill_emoji, pill_label, pill_text,
   popup_enabled, popup_title, popup_body, popup_image,
   link, pill_link, popup_link, cta_label,
-  revision, updated_at, (popup_image_data IS NOT NULL) AS has_image`;
+  revision, updated_at,
+  (popup_image_data IS NOT NULL) AS has_image,
+  (pill_image_data IS NOT NULL) AS has_pill_image`;
 
 /** Normaliza un texto del formulario: vacío o no-texto -> null. */
 function cleanText(v) {
@@ -118,6 +120,7 @@ function promoToJson(row) {
   if (!row) {
     return {
       pillEnabled: false, pillEmoji: null, pillLabel: null, pillText: null,
+      pillImage: null,
       popupEnabled: false, popupTitle: null, popupBody: null, popupImage: null,
       link: null, pillLink: null, popupLink: null,
       ctaLabel: null, revision: 0, updatedAt: null,
@@ -134,6 +137,10 @@ function promoToJson(row) {
     pillEmoji: row.pill_emoji,
     pillLabel: row.pill_label,
     pillText: row.pill_text,
+    // Imagen opcional de la pastilla; se sirve aparte como la del popup.
+    pillImage: row.has_pill_image
+      ? `${PUBLIC_BASE}/home/promo/pill-image?v=${row.revision}`
+      : null,
     popupEnabled: !!row.popup_enabled,
     popupTitle: row.popup_title,
     popupBody: row.popup_body,
@@ -213,6 +220,23 @@ app.get('/home/promo/image', async (_req, res) => {
     res.send(r.popup_image_data);
   } catch (err) {
     console.error('GET /home/promo/image:', err.message);
+    res.status(500).end();
+  }
+});
+
+// Imagen de la pastilla (opcional). Pública igual que la del popup.
+app.get('/home/promo/pill-image', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT pill_image_data, pill_image_mime FROM app_home_promo WHERE id = 1',
+    );
+    const r = rows[0];
+    if (!r || !r.pill_image_data) return res.status(404).end();
+    res.set('Content-Type', r.pill_image_mime || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(r.pill_image_data);
+  } catch (err) {
+    console.error('GET /home/promo/pill-image:', err.message);
     res.status(500).end();
   }
 });
@@ -453,6 +477,47 @@ app.delete('/admin/promo/image', adminAuth, async (_req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('DELETE /admin/promo/image:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Subir y quitar imagen de la pastilla (idénticos a los del popup).
+app.post(
+  '/admin/promo/pill-image',
+  adminAuth,
+  express.raw({ type: () => true, limit: '8mb' }),
+  async (req, res) => {
+    const mime = (req.get('Content-Type') || '').split(';')[0].trim();
+    if (!mime.startsWith('image/')) return res.status(400).json({ error: 'not_an_image' });
+    if (!req.body || !req.body.length) return res.status(400).json({ error: 'empty_file' });
+    try {
+      const { rows } = await pool.query(
+        `UPDATE app_home_promo
+            SET pill_image_data = $1, pill_image_mime = $2,
+                revision = revision + 1, updated_at = now()
+          WHERE id = 1
+          RETURNING revision`,
+        [req.body, mime],
+      );
+      res.json({ ok: true, url: `${PUBLIC_BASE}/home/promo/pill-image?v=${rows[0].revision}` });
+    } catch (err) {
+      console.error('POST /admin/promo/pill-image:', err.message);
+      res.status(500).json({ error: 'server_error' });
+    }
+  },
+);
+
+app.delete('/admin/promo/pill-image', adminAuth, async (_req, res) => {
+  try {
+    await pool.query(
+      `UPDATE app_home_promo
+          SET pill_image_data = NULL, pill_image_mime = NULL,
+              revision = revision + 1, updated_at = now()
+        WHERE id = 1`,
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /admin/promo/pill-image:', err.message);
     res.status(500).json({ error: 'server_error' });
   }
 });

@@ -101,7 +101,9 @@
   .imgbtns { display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: center; }
   .mini { width: 100%; height: 40px; margin: 0; font-size: 13px; }
   .mini.ghost { background: #fff; color: #C8443A; border: 1px solid #E8DFD0; }
-  #popupImageFile { display: none; }
+  #popupImageFile, #pillImageFile { display: none; }
+  /* Miniatura redonda para la imagen de la pastilla (40x40 en la app) */
+  .thumb.round { border-radius: 50%; width: 72px; min-height: 72px; }
   /* Caja de ayuda con ejemplos de enlaces */
   .help {
     background: #E6F0F2; border: 1px solid #BfD9DC; border-radius: 16px;
@@ -226,6 +228,20 @@
 
       <label for="pillText">Texto de la pastilla</label>
       <input id="pillText" maxlength="80" placeholder="Ej.: 20% en infusiones de invierno" />
+
+      <label>Imagen de la pastilla (opcional)</label>
+      <div class="imgbox">
+        <div class="thumb round" id="pillThumb">Sin imagen</div>
+        <div class="imgbtns">
+          <input type="file" id="pillImageFile" accept="image/*" />
+          <button type="button" class="mini" id="pillImageBtn">Subir imagen</button>
+          <button type="button" class="mini ghost" id="pillImageDel">Quitar</button>
+        </div>
+      </div>
+      <p class="hint">Va en el círculo de la izquierda de la pastilla, sustituyendo
+        al emoji. Tamaño recomendado: <b>200 × 200 px</b> (cuadrada). JPG o PNG.
+        Se recorta como un círculo, así que deja lo importante centrado.</p>
+      <div id="pillImageResult" style="margin-top:8px; min-height:16px; font-size:13px; font-weight:600; text-align:center;"></div>
 
       <label for="pillLink">Enlace al pulsar la pastilla</label>
       <input id="pillLink" maxlength="300" placeholder="Ej.: /coleccion/ofertas-para-ti" />
@@ -401,8 +417,10 @@
     r.className = err ? 'err' : 'ok';
   }
 
-  function setThumb(url) {
-    var t = $('popupThumb');
+  function setThumb(url) { setThumbOf('popupThumb', url); }
+  function setPillThumb(url) { setThumbOf('pillThumb', url); }
+  function setThumbOf(id, url) {
+    var t = $(id);
     if (url) {
       t.style.backgroundImage = 'url("' + url + '")';
       t.textContent = '';
@@ -430,6 +448,7 @@
       $('popupLink').value = p.popupLink || '';
       $('promoCta').value = p.ctaLabel || '';
       setThumb(p.popupImage || '');
+      setPillThumb(p.pillImage || '');
     } catch (e) {
       showPromo('No se pudo cargar el contenido actual.', true);
     }
@@ -468,6 +487,48 @@
       else { showImg('No se pudo quitar la imagen.', true); }
     } catch (e) {
       showImg('Error de conexión.', true);
+    }
+  };
+
+  function showPillImg(msg, err) {
+    var r = $('pillImageResult');
+    r.textContent = msg || '';
+    r.className = err ? 'err' : 'ok';
+  }
+
+  $('pillImageBtn').onclick = function () { $('pillImageFile').click(); };
+
+  $('pillImageFile').onchange = async function () {
+    var file = this.files && this.files[0];
+    if (!file) return;
+    showPillImg('Subiendo imagen…', false);
+    try {
+      var res = await fetch('/admin/promo/pill-image', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok && d.url) {
+        setPillThumb(d.url);
+        showPillImg('✅ Imagen subida y guardada.', false);
+      } else {
+        showPillImg('Error al subir: ' + (d.error || res.status), true);
+      }
+    } catch (e) {
+      showPillImg('Error de conexión al subir la imagen.', true);
+    }
+    this.value = '';
+  };
+
+  $('pillImageDel').onclick = async function () {
+    showPillImg('Quitando…', false);
+    try {
+      var res = await fetch('/admin/promo/pill-image', { method: 'DELETE' });
+      if (res.ok) { setPillThumb(''); showPillImg('Imagen quitada.', false); }
+      else { showPillImg('No se pudo quitar la imagen.', true); }
+    } catch (e) {
+      showPillImg('Error de conexión.', true);
     }
   };
 
