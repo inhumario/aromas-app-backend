@@ -9,11 +9,21 @@
         "track": "production",
         "releases": [
           {
-            "name": "1.0.0",
+            "name": "5 (1.0.0)",
             "status": "completed",
             "versions": [
-              "3"
+              "5"
             ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
           }
         ]
       },
@@ -24,12 +34,12 @@
             "name": "1.0.0",
             "status": "completed",
             "versions": [
-              "3"
+              "5"
             ]
           }
         ]
       }
     ]
   },
-  "lastCheck": "2026-05-28T06:11:39Z"
+  "lastCheck": "2026-05-28T10:15:44Z"
 }
