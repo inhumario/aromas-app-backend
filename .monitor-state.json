@@ -4,7 +4,32 @@
     "builds": []
   },
   "play": {
-    "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1016)"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "5 (1.0.0)",
+            "status": "completed",
+            "versions": [
+              "5"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.0",
+            "status": "completed",
+            "versions": [
+              "5"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-05-29T02:19:49Z"
+  "lastCheck": "2026-05-29T02:22:12Z"
 }
