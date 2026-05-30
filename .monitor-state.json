@@ -6,5 +6,5 @@
   "play": {
     "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1016)"
   },
-  "lastCheck": "2026-05-30T12:05:52Z"
+  "lastCheck": "2026-05-30T14:05:32Z"
 }
