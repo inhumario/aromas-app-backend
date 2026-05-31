@@ -1,6 +1,7 @@
 {
   "asc": {
-    "error": "ASC auth error 403: Host not in allowlist"
+    "versions": [],
+    "builds": []
   },
   "play": {
     "tracks": [
@@ -40,5 +41,5 @@
       }
     ]
   },
-  "lastCheck": "2026-05-30T22:09:15Z"
+  "lastCheck": "2026-05-31T00:09:07Z"
 }
