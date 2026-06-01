@@ -4,7 +4,7 @@
     "builds": []
   },
   "play": {
-    "error": "No module named 'google.auth.transport.httplib2'"
+    "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1016)"
   },
-  "lastCheck": "2026-06-01T10:13:32Z"
+  "lastCheck": "2026-06-01T10:14:43Z"
 }
