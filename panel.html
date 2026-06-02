@@ -1129,13 +1129,15 @@
     if (data.error) {
       var detail = '';
       if (data.error === 'api_error' && data.status === 404) {
-        detail = 'API no habilitada. Activa la Play Developer Reporting API en GCP.';
+        detail = 'Pendiente: necesita el Developer ID de Play Console (ver URL: /developers/NNNN/...).';
       } else if (data.error === 'auth_failed') {
         detail = 'Auth rechazada — revisa la API key o vendor number.';
+      } else if (data.error === 'config_missing') {
+        detail = 'Pendiente de configurar credenciales.';
       } else {
         detail = data.detail ? esc(data.detail.slice(0, 120)) : data.error;
       }
-      return statCard(label, 'Error', detail);
+      return statCard(label, 'Pendiente', detail);
     }
     return statCard(label, data.total ?? 0,
       'Últimos ' + (data.days || 30) + ' días' + (data.note ? ' · ' + esc(data.note) : ''),
