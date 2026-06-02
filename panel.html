@@ -305,8 +305,9 @@
   </div>
 </div>
 
-<!-- También se muestra en la pantalla de login, en pequeñito -->
-<div class="version-footer">v __BUILD_ID__ · __BUILD_DATE__</div>
+<!-- También se muestra en la pantalla de login (oculto dentro del panel
+     para no duplicar la etiqueta de la cabecera). -->
+<div class="version-footer hidden" id="versionFooter">v __BUILD_ID__ · __BUILD_DATE__</div>
 
 <div id="tabs" class="tabs hidden">
   <button class="tab active" data-tab="enviar">Enviar</button>
@@ -646,8 +647,14 @@
     $('reset-screen').classList.add('hidden');
   }
 
+  function showVersionFooter(show) {
+    var f = $('versionFooter');
+    if (f) f.classList.toggle('hidden', !show);
+  }
+
   function showLogin(msg, info) {
     hideAuthScreens();
+    showVersionFooter(true);
     $('login-screen').classList.remove('hidden');
     $('topbar').classList.add('hidden');
     $('tabs').classList.add('hidden');
@@ -674,6 +681,7 @@
 
   function showForgot() {
     hideAuthScreens();
+    showVersionFooter(true);
     hideAppPanels();
     $('forgot-screen').classList.remove('hidden');
     $('topbar').classList.add('hidden');
@@ -684,6 +692,7 @@
 
   function showResetScreen(token) {
     hideAuthScreens();
+    showVersionFooter(true);
     hideAppPanels();
     $('reset-screen').classList.remove('hidden');
     $('topbar').classList.add('hidden');
@@ -716,6 +725,7 @@
 
   function showPanel() {
     hideAuthScreens();
+    showVersionFooter(false);
     $('topbar').classList.remove('hidden');
     $('tabs').classList.remove('hidden');
     // Pinta cabecera con quién soy.
