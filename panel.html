@@ -28,6 +28,7 @@
   .panel { display: none; width: 100%; max-width: 480px; }
   .panel.active { display: block; }
   .panel#panel-inicio { max-width: 1080px; }
+  .panel#panel-usuarios { max-width: 760px; }
   .grid-inicio {
     display: grid; gap: 20px; grid-template-columns: 1fr;
   }
@@ -129,14 +130,102 @@
     margin-top: 10px; padding-top: 10px; border-top: 1px dashed #BfD9DC;
     font-size: 12.5px; color: #4A6E73;
   }
+  /* Cabecera con usuario / cerrar sesión */
+  .topbar {
+    width: 100%; max-width: 1080px; display: flex; align-items: center;
+    justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 700;
+    color: #4A4A4A;
+  }
+  .topbar .who { display: flex; align-items: center; gap: 8px; }
+  .topbar .who .badge {
+    background: #2B818B; color: #fff; border-radius: 100px;
+    padding: 3px 10px; font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .topbar .who .badge.editor { background: #6E5AA0; }
+  .topbar button.logout {
+    width: auto; height: 36px; margin: 0; padding: 0 16px;
+    background: #fff; color: #C8443A; border: 1px solid #E8DFD0;
+    font-size: 12px; font-weight: 800;
+  }
+  /* Pantalla de login (cuando no hay sesión) */
+  #login-screen {
+    width: 100%; max-width: 420px; margin-top: 32px;
+  }
+  #login-screen .card { padding: 32px; }
+  #login-screen h1 { margin-bottom: 4px; }
+  /* Tabla de usuarios */
+  .user-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 12px;
+    border: 1px solid #F0E8DB; border-radius: 14px; padding: 14px;
+    margin-top: 12px; background: #FCFAF5;
+    align-items: center;
+  }
+  @media (max-width: 600px) {
+    .user-row { grid-template-columns: 1fr; }
+  }
+  .user-row .name { font-weight: 800; font-size: 14px; }
+  .user-row .meta { font-size: 12px; color: #7A7A7A; margin-top: 3px; }
+  .user-row .row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .user-row .row-actions button {
+    width: auto; height: 32px; margin: 0; padding: 0 12px;
+    font-size: 12px; font-weight: 700;
+  }
+  .badge-role {
+    display: inline-block; background: #2B818B; color: #fff;
+    border-radius: 100px; padding: 2px 9px; font-size: 10px;
+    font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+    margin-left: 6px;
+  }
+  .badge-role.editor { background: #6E5AA0; }
+  .badge-role.disabled { background: #B0B0B0; }
+  button.ghost {
+    background: #fff; color: #2B818B; border: 1px solid #E8DFD0;
+  }
+  button.danger {
+    background: #fff; color: #C8443A; border: 1px solid #E8DFD0;
+  }
+  .form-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  @media (max-width: 600px) {
+    .form-row { grid-template-columns: 1fr; gap: 0; }
+  }
+  /* Esconde elementos según rol — JS añade/quita "admin-only" / "hidden" */
+  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
-<div class="tabs">
+<!-- Pantalla de login (se muestra si no hay sesión válida) -->
+<div id="login-screen" class="hidden">
+  <div class="card">
+    <h1>Panel de Aromas de Té</h1>
+    <div class="sub">Identifícate para continuar</div>
+    <label for="loginUser">Usuario</label>
+    <input id="loginUser" autocomplete="username" autocapitalize="none" autocorrect="off" />
+    <label for="loginPass">Contraseña</label>
+    <input id="loginPass" type="password" autocomplete="current-password" />
+    <button id="loginBtn">Entrar</button>
+    <div id="loginResult"></div>
+  </div>
+</div>
+
+<!-- Cabecera con quién soy + cerrar sesión (oculto hasta login) -->
+<div id="topbar" class="topbar hidden">
+  <div class="who">
+    <span>Hola, <b id="whoName">…</b></span>
+    <span class="badge" id="whoBadge">…</span>
+  </div>
+  <button class="logout" id="logoutBtn">Cerrar sesión</button>
+</div>
+
+<div id="tabs" class="tabs hidden">
   <button class="tab active" data-tab="enviar">Enviar</button>
   <button class="tab" data-tab="enviadas">Enviadas</button>
   <button class="tab" data-tab="inicio">Inicio</button>
+  <button class="tab" data-tab="cuenta">Mi cuenta</button>
+  <button class="tab admin-only" data-tab="usuarios">Usuarios</button>
 </div>
 
 <!-- Pestaña: enviar notificación -->
@@ -332,6 +421,60 @@
   </div>
 </div>
 
+<!-- Pestaña: mi cuenta (cualquier rol) -->
+<div class="panel" id="panel-cuenta">
+  <div class="card">
+    <h1>Mi cuenta</h1>
+    <div class="sub">Cambia tu contraseña de acceso al panel</div>
+
+    <label for="curPass">Contraseña actual</label>
+    <input id="curPass" type="password" autocomplete="current-password" />
+
+    <label for="newPass">Contraseña nueva</label>
+    <input id="newPass" type="password" autocomplete="new-password" />
+    <p class="hint">Mínimo 10 caracteres. Usa letras, números y algún símbolo.</p>
+
+    <label for="newPass2">Repite la contraseña nueva</label>
+    <input id="newPass2" type="password" autocomplete="new-password" />
+
+    <button id="changePassBtn">Cambiar contraseña</button>
+    <div id="changePassResult"></div>
+  </div>
+</div>
+
+<!-- Pestaña: usuarios (solo rol admin) -->
+<div class="panel" id="panel-usuarios">
+  <div class="card">
+    <h1>Usuarios del panel</h1>
+    <div class="sub">Da de alta nuevas personas, ajusta su rol o bloquea el acceso</div>
+
+    <h2 style="margin-top:8px">Crear usuario</h2>
+    <div class="form-row">
+      <div>
+        <label for="newUserName">Usuario</label>
+        <input id="newUserName" placeholder="ej. maria" maxlength="40" />
+        <p class="hint">Letras, números, punto, guion y guion bajo. 3-40 caracteres.</p>
+      </div>
+      <div>
+        <label for="newUserRole">Rol</label>
+        <select id="newUserRole">
+          <option value="editor">Editor — edita contenido y envía notificaciones</option>
+          <option value="admin">Administrador — además, gestiona usuarios</option>
+        </select>
+      </div>
+    </div>
+    <label for="newUserPass">Contraseña inicial</label>
+    <input id="newUserPass" type="password" autocomplete="new-password" />
+    <p class="hint">Mínimo 10 caracteres. El usuario podrá cambiarla cuando entre.</p>
+    <button id="createUserBtn">Crear usuario</button>
+    <div id="createUserResult"></div>
+
+    <hr class="rule" />
+    <h2>Usuarios existentes</h2>
+    <div id="usersList"><div class="empty">Cargando…</div></div>
+  </div>
+</div>
+
 <script>
   var $ = function (id) { return document.getElementById(id); };
 
@@ -349,21 +492,339 @@
     } catch (e) { return ''; }
   }
 
+  /* --- Sesión: arranque, login, logout ------------------------------- */
+
+  var currentUser = null;       // { id, username, role }
+  var usersLoaded = false;
+
+  /** Mensajes de error legibles del backend. */
+  var ERR_MSG = {
+    invalid_credentials: 'Usuario o contraseña incorrectos.',
+    too_many_attempts: 'Demasiados intentos. Espera 10 minutos.',
+    credentials_required: 'Pon usuario y contraseña.',
+    unauthorized: 'Sesión caducada. Vuelve a entrar.',
+    forbidden: 'No tienes permisos para esto.',
+    invalid_current_password: 'La contraseña actual no es correcta.',
+    new_password_too_short: 'La contraseña nueva debe tener al menos 10 caracteres.',
+    password_too_short: 'La contraseña debe tener al menos 10 caracteres.',
+    invalid_username: 'Usuario inválido. Usa 3-40 caracteres (letras, números, . _ -).',
+    invalid_role: 'Rol inválido.',
+    username_taken: 'Ya existe un usuario con ese nombre.',
+    cannot_delete_self: 'No puedes borrar tu propio usuario.',
+    cannot_demote_self: 'No puedes quitarte el rol de administrador a ti mismo.',
+    cannot_disable_self: 'No puedes desactivarte a ti mismo.',
+    last_admin: 'No puedes borrar al último administrador.',
+    not_found: 'No encontrado.',
+    server_error: 'Error del servidor. Inténtalo en unos segundos.',
+  };
+  function msgFor(d, status) {
+    var key = d && d.error;
+    return ERR_MSG[key] || ('Error: ' + (key || status || 'desconocido'));
+  }
+
+  /** Wrapper para fetch que redirige a login si el servidor responde 401. */
+  async function api(url, options) {
+    var res = await fetch(url, options || {});
+    if (res.status === 401) {
+      // Cookie caducada o inválida → volver al login.
+      currentUser = null;
+      showLogin('La sesión ha caducado. Vuelve a entrar.');
+      throw new Error('unauthorized');
+    }
+    return res;
+  }
+
+  function showLogin(msg, info) {
+    $('login-screen').classList.remove('hidden');
+    $('topbar').classList.add('hidden');
+    $('tabs').classList.add('hidden');
+    document.querySelectorAll('.panel').forEach(function (p) {
+      p.classList.remove('active');
+    });
+    var r = $('loginResult');
+    if (r) {
+      r.textContent = msg || '';
+      r.className = msg ? (info ? '' : 'err') : '';
+    }
+    setTimeout(function () {
+      var u = $('loginUser'); if (u && !u.value) u.focus();
+    }, 50);
+  }
+
+  function showPanel() {
+    $('login-screen').classList.add('hidden');
+    $('topbar').classList.remove('hidden');
+    $('tabs').classList.remove('hidden');
+    // Pinta cabecera con quién soy.
+    $('whoName').textContent = currentUser.username;
+    var badge = $('whoBadge');
+    badge.textContent = currentUser.role === 'admin' ? 'Administrador' : 'Editor';
+    badge.classList.toggle('editor', currentUser.role !== 'admin');
+    // Pestaña "Usuarios" solo para admin.
+    document.querySelectorAll('.admin-only').forEach(function (el) {
+      el.classList.toggle('hidden', currentUser.role !== 'admin');
+    });
+    // Activa la pestaña actualmente marcada (por defecto "enviar").
+    var active = document.querySelector('.tab.active');
+    var name = active ? active.getAttribute('data-tab') : 'enviar';
+    selectTab(name);
+    loadPromo();
+  }
+
+  async function checkSession() {
+    try {
+      var res = await fetch('/admin/me');
+      if (res.ok) {
+        var d = await res.json();
+        currentUser = d.user;
+        showPanel();
+        return;
+      }
+    } catch (e) { /* sin red */ }
+    showLogin();
+  }
+
+  $('loginBtn').onclick = doLogin;
+  $('loginPass').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') doLogin();
+  });
+  $('loginUser').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') $('loginPass').focus();
+  });
+
+  async function doLogin() {
+    var username = $('loginUser').value.trim();
+    var password = $('loginPass').value;
+    if (!username || !password) {
+      $('loginResult').textContent = 'Pon usuario y contraseña.';
+      $('loginResult').className = 'err';
+      return;
+    }
+    $('loginBtn').disabled = true;
+    $('loginResult').textContent = 'Entrando…';
+    $('loginResult').className = '';
+    try {
+      var res = await fetch('/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username, password: password }),
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok && d.user) {
+        currentUser = d.user;
+        $('loginPass').value = '';
+        $('loginResult').textContent = '';
+        showPanel();
+      } else {
+        $('loginResult').textContent = msgFor(d, res.status);
+        $('loginResult').className = 'err';
+      }
+    } catch (e) {
+      $('loginResult').textContent = 'Error de conexión.';
+      $('loginResult').className = 'err';
+    }
+    $('loginBtn').disabled = false;
+  }
+
+  $('logoutBtn').onclick = async function () {
+    try { await fetch('/admin/logout', { method: 'POST' }); } catch (e) {}
+    currentUser = null;
+    showLogin('Sesión cerrada.', true);
+  };
+
   /* --- Pestañas --- */
 
   var historyLoaded = false;
+
+  function selectTab(name) {
+    document.querySelectorAll('.tab').forEach(function (t) {
+      t.classList.toggle('active', t.getAttribute('data-tab') === name);
+    });
+    document.querySelectorAll('.panel').forEach(function (p) {
+      p.classList.toggle('active', p.id === 'panel-' + name);
+    });
+    if (name === 'enviadas' && !historyLoaded) { historyLoaded = true; loadHistory(); }
+    if (name === 'usuarios' && !usersLoaded && currentUser && currentUser.role === 'admin') {
+      usersLoaded = true; loadUsers();
+    }
+  }
+
   document.querySelectorAll('.tab').forEach(function (tab) {
-    tab.onclick = function () {
-      var name = this.getAttribute('data-tab');
-      document.querySelectorAll('.tab').forEach(function (t) {
-        t.classList.toggle('active', t.getAttribute('data-tab') === name);
-      });
-      document.querySelectorAll('.panel').forEach(function (p) {
-        p.classList.toggle('active', p.id === 'panel-' + name);
-      });
-      if (name === 'enviadas' && !historyLoaded) { historyLoaded = true; loadHistory(); }
-    };
+    tab.onclick = function () { selectTab(this.getAttribute('data-tab')); };
   });
+
+  /* --- Cambio de contraseña propio --- */
+
+  function showChangePass(msg, err) {
+    var r = $('changePassResult');
+    r.textContent = msg || '';
+    r.className = err ? 'err' : 'ok';
+  }
+
+  $('changePassBtn').onclick = async function () {
+    var cur = $('curPass').value;
+    var n1 = $('newPass').value;
+    var n2 = $('newPass2').value;
+    if (!cur || !n1 || !n2) { showChangePass('Rellena los tres campos.', true); return; }
+    if (n1 !== n2) { showChangePass('La contraseña nueva y su repetición no coinciden.', true); return; }
+    if (n1.length < 10) { showChangePass('La contraseña nueva debe tener al menos 10 caracteres.', true); return; }
+    $('changePassBtn').disabled = true;
+    showChangePass('Guardando…', false);
+    try {
+      var res = await api('/admin/me/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: cur, newPassword: n1 }),
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        showChangePass('✅ Contraseña actualizada.', false);
+        $('curPass').value = ''; $('newPass').value = ''; $('newPass2').value = '';
+      } else {
+        showChangePass(msgFor(d, res.status), true);
+      }
+    } catch (e) {
+      if (e.message !== 'unauthorized') showChangePass('Error de conexión.', true);
+    }
+    $('changePassBtn').disabled = false;
+  };
+
+  /* --- Gestión de usuarios (solo admin) --- */
+
+  function showCreateUser(msg, err) {
+    var r = $('createUserResult');
+    r.textContent = msg || '';
+    r.className = err ? 'err' : 'ok';
+  }
+
+  async function loadUsers() {
+    $('usersList').innerHTML = '<div class="empty">Cargando…</div>';
+    try {
+      var res = await api('/admin/users');
+      if (!res.ok) {
+        var d = await res.json().catch(function () { return {}; });
+        $('usersList').innerHTML = '<div class="empty">' + esc(msgFor(d, res.status)) + '</div>';
+        return;
+      }
+      var data = await res.json();
+      var items = data.items || [];
+      if (!items.length) {
+        $('usersList').innerHTML = '<div class="empty">No hay usuarios.</div>';
+        return;
+      }
+      $('usersList').innerHTML = items.map(renderUserRow).join('');
+      attachUserActions();
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        $('usersList').innerHTML = '<div class="empty">No se pudo cargar.</div>';
+      }
+    }
+  }
+
+  function renderUserRow(u) {
+    var isMe = currentUser && u.id === currentUser.id;
+    var roleBadge = '<span class="badge-role ' + (u.role === 'admin' ? '' : 'editor') + '">'
+      + (u.role === 'admin' ? 'Admin' : 'Editor') + '</span>';
+    var disabledBadge = u.enabled ? '' : '<span class="badge-role disabled">Bloqueado</span>';
+    var lastLogin = u.lastLoginAt
+      ? 'Último acceso: ' + esc(fmtDate(u.lastLoginAt))
+      : 'Nunca ha entrado';
+    var actions = [];
+    if (!isMe) {
+      actions.push('<button class="ghost" data-act="role" data-id="' + u.id + '" data-role="'
+        + (u.role === 'admin' ? 'editor' : 'admin') + '">'
+        + (u.role === 'admin' ? 'Quitar admin' : 'Hacer admin') + '</button>');
+      actions.push('<button class="ghost" data-act="toggle" data-id="' + u.id + '" data-enabled="'
+        + (u.enabled ? 'false' : 'true') + '">'
+        + (u.enabled ? 'Bloquear' : 'Desbloquear') + '</button>');
+    }
+    actions.push('<button class="ghost" data-act="reset" data-id="' + u.id + '" data-name="'
+      + esc(u.username) + '">Resetear contraseña</button>');
+    if (!isMe) {
+      actions.push('<button class="danger" data-act="delete" data-id="' + u.id + '" data-name="'
+        + esc(u.username) + '">Eliminar</button>');
+    }
+    return '<div class="user-row">'
+      + '<div>'
+        + '<div class="name">' + esc(u.username) + (isMe ? ' (tú)' : '') + ' ' + roleBadge + ' ' + disabledBadge + '</div>'
+        + '<div class="meta">' + esc(lastLogin) + ' · Creado el ' + esc(fmtDate(u.createdAt)) + '</div>'
+      + '</div>'
+      + '<div class="row-actions">' + actions.join('') + '</div>'
+      + '</div>';
+  }
+
+  function attachUserActions() {
+    $('usersList').querySelectorAll('button[data-act]').forEach(function (btn) {
+      btn.onclick = function () { onUserAction(btn); };
+    });
+  }
+
+  async function onUserAction(btn) {
+    var act = btn.dataset.act;
+    var id = btn.dataset.id;
+    btn.disabled = true;
+    try {
+      if (act === 'role') {
+        await patchUser(id, { role: btn.dataset.role });
+      } else if (act === 'toggle') {
+        await patchUser(id, { enabled: btn.dataset.enabled === 'true' });
+      } else if (act === 'reset') {
+        var p = prompt('Nueva contraseña para ' + btn.dataset.name + ' (mín. 10 caracteres):');
+        if (p == null) return;
+        if (p.length < 10) { alert('La contraseña debe tener al menos 10 caracteres.'); return; }
+        await patchUser(id, { newPassword: p });
+        alert('Contraseña restablecida. Comunícasela a ' + btn.dataset.name + '.');
+      } else if (act === 'delete') {
+        if (!confirm('¿Eliminar el usuario "' + btn.dataset.name + '" definitivamente?')) return;
+        var res = await api('/admin/users/' + id, { method: 'DELETE' });
+        var d = await res.json().catch(function () { return {}; });
+        if (!res.ok) { alert(msgFor(d, res.status)); return; }
+      }
+      await loadUsers();
+    } catch (e) { /* api() ya gestiona 401 */ }
+    finally { btn.disabled = false; }
+  }
+
+  async function patchUser(id, body) {
+    var res = await api('/admin/users/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    var d = await res.json().catch(function () { return {}; });
+    if (!res.ok) { alert(msgFor(d, res.status)); throw new Error('patch_failed'); }
+    return d;
+  }
+
+  $('createUserBtn').onclick = async function () {
+    var username = $('newUserName').value.trim();
+    var role = $('newUserRole').value;
+    var pass = $('newUserPass').value;
+    if (!username || !pass) { showCreateUser('Pon usuario y contraseña.', true); return; }
+    if (pass.length < 10) { showCreateUser('La contraseña debe tener al menos 10 caracteres.', true); return; }
+    $('createUserBtn').disabled = true;
+    showCreateUser('Creando…', false);
+    try {
+      var res = await api('/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username, role: role, password: pass }),
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        showCreateUser('✅ Usuario "' + username + '" creado.', false);
+        $('newUserName').value = '';
+        $('newUserPass').value = '';
+        $('newUserRole').value = 'editor';
+        loadUsers();
+      } else {
+        showCreateUser(msgFor(d, res.status), true);
+      }
+    } catch (e) {
+      if (e.message !== 'unauthorized') showCreateUser('Error de conexión.', true);
+    }
+    $('createUserBtn').disabled = false;
+  };
 
   /* --- Enviar notificación --- */
 
@@ -375,7 +836,7 @@
 
   async function loadHistory() {
     try {
-      var res = await fetch('/admin/notifications');
+      var res = await api('/admin/notifications');
       if (!res.ok) throw new Error();
       var d = await res.json();
       var items = d.items || [];
@@ -409,7 +870,7 @@
     $('send').disabled = true;
     show('Enviando…', false);
     try {
-      var res = await fetch('/admin/push', {
+      var res = await api('/admin/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -485,7 +946,7 @@
 
   async function loadPromo() {
     try {
-      var res = await fetch('/admin/promo');
+      var res = await api('/admin/promo');
       if (!res.ok) throw new Error();
       var p = await res.json();
       $('pillEnabled').checked = !!p.pillEnabled;
@@ -519,7 +980,7 @@
     if (!file) return;
     showImg('Subiendo imagen…', false);
     try {
-      var res = await fetch('/admin/promo/image', {
+      var res = await api('/admin/promo/image', {
         method: 'POST',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
@@ -540,7 +1001,7 @@
   $('popupImageDel').onclick = async function () {
     showImg('Quitando…', false);
     try {
-      var res = await fetch('/admin/promo/image', { method: 'DELETE' });
+      var res = await api('/admin/promo/image', { method: 'DELETE' });
       if (res.ok) { setThumb(''); showImg('Imagen quitada.', false); }
       else { showImg('No se pudo quitar la imagen.', true); }
     } catch (e) {
@@ -561,7 +1022,7 @@
     if (!file) return;
     showPillImg('Subiendo imagen…', false);
     try {
-      var res = await fetch('/admin/promo/pill-image', {
+      var res = await api('/admin/promo/pill-image', {
         method: 'POST',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
@@ -582,7 +1043,7 @@
   $('pillImageDel').onclick = async function () {
     showPillImg('Quitando…', false);
     try {
-      var res = await fetch('/admin/promo/pill-image', { method: 'DELETE' });
+      var res = await api('/admin/promo/pill-image', { method: 'DELETE' });
       if (res.ok) { setPillThumb(''); showPillImg('Imagen quitada.', false); }
       else { showPillImg('No se pudo quitar la imagen.', true); }
     } catch (e) {
@@ -594,7 +1055,7 @@
     $('savePill').disabled = true;
     showPill('Guardando pastilla…', false);
     try {
-      var res = await fetch('/admin/promo/pill', {
+      var res = await api('/admin/promo/pill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -623,7 +1084,7 @@
     $('savePopup').disabled = true;
     showPopup('Guardando popup…', false);
     try {
-      var res = await fetch('/admin/promo/popup', {
+      var res = await api('/admin/promo/popup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -649,7 +1110,9 @@
     $('savePopup').disabled = false;
   };
 
-  loadPromo();
+  // Arranque: comprueba si ya hay sesión. Si la hay, pinta el panel; si no,
+  // muestra la pantalla de login.
+  checkSession();
 </script>
 </body>
 </html>

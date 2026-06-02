@@ -15,6 +15,19 @@ import pg from 'pg';
 import { getAllRatings, getReviewsForHandle } from './reviews.js';
 import { recordNotification, sendPush } from './push.js';
 import { handleOrderWebhook, verifyShopifyHmac } from './webhooks.js';
+import {
+  bootstrapAdminUser,
+  buildSetCookie,
+  clientIp,
+  hashPassword,
+  isLoginBlocked,
+  isSecureRequest,
+  readCookie,
+  recordLoginAttempt,
+  signSession,
+  verifyPassword,
+  verifySession,
+} from './auth.js';
 
 const { Pool } = pg;
 
@@ -84,17 +97,50 @@ async function auth(req, res, next) {
   }
 }
 
-/** Autenticación básica para el panel de administración. */
-function adminAuth(req, res, next) {
-  const m = /^Basic\s+(.+)$/i.exec(req.get('Authorization') || '');
-  if (m) {
-    const [user, pass] = Buffer.from(m[1], 'base64').toString().split(':');
-    if (process.env.ADMIN_PASSWORD && user === process.env.ADMIN_USER && pass === process.env.ADMIN_PASSWORD) {
-      return next();
+/**
+ * Autenticación del panel. Se basa en una cookie de sesión firmada (HMAC) que
+ * se emite tras un POST a /admin/login. El payload guarda { uid, username,
+ * role, exp }. La cookie es HttpOnly + Secure + SameSite=Strict.
+ *
+ * Si la cookie no es válida y el cliente acepta HTML, devolvemos la pantalla
+ * de login del propio panel. Para llamadas a la API admin (JSON) devolvemos
+ * 401 con `{error:'unauthorized'}` para que el panel pueda redirigir al login.
+ */
+async function loadUser(req) {
+  const session = verifySession(readCookie(req));
+  if (!session?.uid) return null;
+  const { rows } = await pool.query(
+    'SELECT id, username, role, enabled FROM app_admin_users WHERE id = $1',
+    [session.uid],
+  );
+  const u = rows[0];
+  if (!u || !u.enabled) return null;
+  return { id: Number(u.id), username: u.username, role: u.role };
+}
+
+function adminAuth(opts = {}) {
+  const requireAdmin = !!opts.requireAdmin;
+  return async function (req, res, next) {
+    let user;
+    try {
+      user = await loadUser(req);
+    } catch (err) {
+      console.error('adminAuth:', err.message);
+      return res.status(500).json({ error: 'server_error' });
     }
-  }
-  res.set('WWW-Authenticate', 'Basic realm="Aromas - Notificaciones"');
-  res.status(401).send('Autenticación requerida.');
+    if (!user) {
+      // Para llamadas JSON, 401; para navegación HTML, mandamos el login.
+      if (req.accepts(['json', 'html']) === 'html') {
+        return res.type('html').send(PANEL_HTML);
+      }
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    if (requireAdmin && user.role !== 'admin') {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    req.user = user;
+    next();
+  };
 }
 
 /* -------------------- Contenido editable del inicio ------------------ */
@@ -412,11 +458,211 @@ app.post('/webhooks/shopify/order', (req, res) => {
 
 /* --- Panel de envío de notificaciones (protegido con usuario/contraseña) --- */
 
-app.get('/admin', adminAuth, (_req, res) => {
+// La página del panel se sirve siempre (sin auth). El propio HTML detecta si
+// hay sesión consultando GET /admin/me y muestra la pantalla de login si no.
+app.get('/admin', (_req, res) => {
   res.type('html').send(PANEL_HTML);
 });
 
-app.post('/admin/push', adminAuth, async (req, res) => {
+/* --- Sesión: login / logout / quién soy --- */
+
+app.post('/admin/login', async (req, res) => {
+  const ip = clientIp(req);
+  const { username, password } = req.body || {};
+  if (typeof username !== 'string' || typeof password !== 'string'
+      || !username.trim() || !password) {
+    return res.status(400).json({ error: 'credentials_required' });
+  }
+  if (await isLoginBlocked(pool, ip)) {
+    return res.status(429).json({ error: 'too_many_attempts' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, username, password_hash, role, enabled
+         FROM app_admin_users
+        WHERE lower(username) = lower($1)`,
+      [username.trim()],
+    );
+    const u = rows[0];
+    const ok = !!u && u.enabled && (await verifyPassword(password, u.password_hash));
+    await recordLoginAttempt(pool, ip, ok, username.trim());
+    if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
+    await pool.query(
+      'UPDATE app_admin_users SET last_login_at = now() WHERE id = $1',
+      [u.id],
+    );
+    const uid = Number(u.id);
+    const cookie = signSession({ uid, username: u.username, role: u.role });
+    res.set('Set-Cookie', buildSetCookie(cookie, { secure: isSecureRequest(req) }));
+    res.json({ ok: true, user: { id: uid, username: u.username, role: u.role } });
+  } catch (err) {
+    console.error('POST /admin/login:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+app.post('/admin/logout', (req, res) => {
+  res.set('Set-Cookie', buildSetCookie('', { clear: true, secure: isSecureRequest(req) }));
+  res.json({ ok: true });
+});
+
+app.get('/admin/me', adminAuth(), (req, res) => {
+  res.json({ user: req.user });
+});
+
+// Cambiar la contraseña del usuario logado. Pide la actual para evitar
+// que alguien con la sesión secuestrada la cambie sin más.
+app.post('/admin/me/password', adminAuth(), async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+    return res.status(400).json({ error: 'passwords_required' });
+  }
+  if (newPassword.length < 10) {
+    return res.status(400).json({ error: 'new_password_too_short' });
+  }
+  try {
+    const { rows } = await pool.query(
+      'SELECT password_hash FROM app_admin_users WHERE id = $1',
+      [req.user.id],
+    );
+    if (!rows[0]) return res.status(401).json({ error: 'unauthorized' });
+    if (!(await verifyPassword(currentPassword, rows[0].password_hash))) {
+      return res.status(401).json({ error: 'invalid_current_password' });
+    }
+    const hash = await hashPassword(newPassword);
+    await pool.query(
+      'UPDATE app_admin_users SET password_hash = $1, updated_at = now() WHERE id = $2',
+      [hash, req.user.id],
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /admin/me/password:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+/* --- Gestión de usuarios (solo rol admin) --- */
+
+function publicUser(u) {
+  return {
+    id: Number(u.id),
+    username: u.username,
+    role: u.role,
+    enabled: u.enabled,
+    createdAt: u.created_at,
+    updatedAt: u.updated_at,
+    lastLoginAt: u.last_login_at,
+  };
+}
+
+function validUsername(s) {
+  return typeof s === 'string' && /^[A-Za-z0-9._-]{3,40}$/.test(s);
+}
+function validRole(s) { return s === 'admin' || s === 'editor'; }
+
+app.get('/admin/users', adminAuth({ requireAdmin: true }), async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, username, role, enabled, created_at, updated_at, last_login_at
+         FROM app_admin_users ORDER BY username`,
+    );
+    res.json({ items: rows.map(publicUser) });
+  } catch (err) {
+    console.error('GET /admin/users:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+app.post('/admin/users', adminAuth({ requireAdmin: true }), async (req, res) => {
+  const { username, password, role } = req.body || {};
+  if (!validUsername(username)) return res.status(400).json({ error: 'invalid_username' });
+  if (!validRole(role)) return res.status(400).json({ error: 'invalid_role' });
+  if (typeof password !== 'string' || password.length < 10) {
+    return res.status(400).json({ error: 'password_too_short' });
+  }
+  try {
+    const hash = await hashPassword(password);
+    const { rows } = await pool.query(
+      `INSERT INTO app_admin_users (username, password_hash, role, created_by)
+         VALUES ($1, $2, $3, $4)
+       RETURNING id, username, role, enabled, created_at, updated_at, last_login_at`,
+      [username.trim(), hash, role, req.user.id],
+    );
+    res.json({ user: publicUser(rows[0]) });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'username_taken' });
+    console.error('POST /admin/users:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+app.patch('/admin/users/:id', adminAuth({ requireAdmin: true }), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad_id' });
+  const { role, enabled, newPassword } = req.body || {};
+  const sets = [];
+  const params = [];
+  if (role !== undefined) {
+    if (!validRole(role)) return res.status(400).json({ error: 'invalid_role' });
+    // No permitir quitarse el rol admin a uno mismo (evita lockout).
+    if (id === req.user.id && role !== 'admin') {
+      return res.status(400).json({ error: 'cannot_demote_self' });
+    }
+    params.push(role); sets.push(`role = $${params.length}`);
+  }
+  if (enabled !== undefined) {
+    if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'invalid_enabled' });
+    if (id === req.user.id && enabled === false) {
+      return res.status(400).json({ error: 'cannot_disable_self' });
+    }
+    params.push(enabled); sets.push(`enabled = $${params.length}`);
+  }
+  if (newPassword !== undefined) {
+    if (typeof newPassword !== 'string' || newPassword.length < 10) {
+      return res.status(400).json({ error: 'password_too_short' });
+    }
+    const hash = await hashPassword(newPassword);
+    params.push(hash); sets.push(`password_hash = $${params.length}`);
+  }
+  if (!sets.length) return res.status(400).json({ error: 'nothing_to_update' });
+  sets.push('updated_at = now()');
+  params.push(id);
+  try {
+    const { rows } = await pool.query(
+      `UPDATE app_admin_users SET ${sets.join(', ')} WHERE id = $${params.length}
+         RETURNING id, username, role, enabled, created_at, updated_at, last_login_at`,
+      params,
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    res.json({ user: publicUser(rows[0]) });
+  } catch (err) {
+    console.error('PATCH /admin/users:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+app.delete('/admin/users/:id', adminAuth({ requireAdmin: true }), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad_id' });
+  if (id === req.user.id) return res.status(400).json({ error: 'cannot_delete_self' });
+  try {
+    // Si era el último admin, bloqueamos el borrado para no perder el acceso.
+    const { rows: admins } = await pool.query(
+      `SELECT id FROM app_admin_users WHERE role = 'admin' AND enabled = true`,
+    );
+    if (admins.length <= 1 && admins.some((a) => Number(a.id) === id)) {
+      return res.status(400).json({ error: 'last_admin' });
+    }
+    const r = await pool.query('DELETE FROM app_admin_users WHERE id = $1', [id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /admin/users:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+app.post('/admin/push', adminAuth(), async (req, res) => {
   const { title, body, category, path } = req.body || {};
   if (!title || !body) return res.status(400).json({ error: 'title_body_required' });
   const cat = typeof category === 'string' ? category : '';
@@ -444,7 +690,7 @@ app.post('/admin/push', adminAuth, async (req, res) => {
 // Contenido editable del inicio: leer (para rellenar el formulario del panel).
 // `forApp:false` para que el panel vea la revisión real, no la "rotada" por
 // el cooldown que se sirve a la app.
-app.get('/admin/promo', adminAuth, async (_req, res) => {
+app.get('/admin/promo', adminAuth(), async (_req, res) => {
   try {
     const { rows } = await pool.query(`SELECT ${PROMO_COLS} FROM app_home_promo WHERE id = 1`);
     res.json(promoToJson(rows[0], false));
@@ -472,7 +718,7 @@ async function syncLegacyLink() {
 }
 
 // Guarda SOLO los campos de la pastilla de ofertas.
-app.post('/admin/promo/pill', adminAuth, async (req, res) => {
+app.post('/admin/promo/pill', adminAuth(), async (req, res) => {
   const b = req.body || {};
   const pillLink = cleanText(b.pillLink);
   try {
@@ -497,7 +743,7 @@ app.post('/admin/promo/pill', adminAuth, async (req, res) => {
 });
 
 // Guarda SOLO los campos del popup de bienvenida.
-app.post('/admin/promo/popup', adminAuth, async (req, res) => {
+app.post('/admin/promo/popup', adminAuth(), async (req, res) => {
   const b = req.body || {};
   const popupLink = cleanText(b.popupLink);
   let cooldown = null;
@@ -530,7 +776,7 @@ app.post('/admin/promo/popup', adminAuth, async (req, res) => {
 
 // Endpoint legacy (compat): guarda ambos a la vez. El panel nuevo ya no lo
 // usa, pero se mantiene por si algo lo invocara.
-app.post('/admin/promo', adminAuth, async (req, res) => {
+app.post('/admin/promo', adminAuth(), async (req, res) => {
   const b = req.body || {};
   const pillLink = cleanText(b.pillLink);
   const popupLink = cleanText(b.popupLink);
@@ -568,7 +814,7 @@ app.post('/admin/promo', adminAuth, async (req, res) => {
 // indica el tipo. Sube `revision` para que la app refresque la imagen.
 app.post(
   '/admin/promo/image',
-  adminAuth,
+  adminAuth(),
   express.raw({ type: () => true, limit: '8mb' }),
   async (req, res) => {
     const mime = (req.get('Content-Type') || '').split(';')[0].trim();
@@ -592,7 +838,7 @@ app.post(
 );
 
 // Quitar la imagen del popup.
-app.delete('/admin/promo/image', adminAuth, async (_req, res) => {
+app.delete('/admin/promo/image', adminAuth(), async (_req, res) => {
   try {
     await pool.query(
       `UPDATE app_home_promo
@@ -610,7 +856,7 @@ app.delete('/admin/promo/image', adminAuth, async (_req, res) => {
 // Subir y quitar imagen de la pastilla (idénticos a los del popup).
 app.post(
   '/admin/promo/pill-image',
-  adminAuth,
+  adminAuth(),
   express.raw({ type: () => true, limit: '8mb' }),
   async (req, res) => {
     const mime = (req.get('Content-Type') || '').split(';')[0].trim();
@@ -633,7 +879,7 @@ app.post(
   },
 );
 
-app.delete('/admin/promo/pill-image', adminAuth, async (_req, res) => {
+app.delete('/admin/promo/pill-image', adminAuth(), async (_req, res) => {
   try {
     await pool.query(
       `UPDATE app_home_promo
@@ -649,7 +895,7 @@ app.delete('/admin/promo/pill-image', adminAuth, async (_req, res) => {
 });
 
 // Historial de notificaciones con estadísticas de apertura (para el panel).
-app.get('/admin/notifications', adminAuth, async (_req, res) => {
+app.get('/admin/notifications', adminAuth(), async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT n.id, n.title, n.body, n.category, n.audience, n.recipients, n.created_at,
@@ -769,5 +1015,12 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-initDb();
+// `trust proxy` para que `clientIp()` lea X-Forwarded-For del proxy de easypanel.
+app.set('trust proxy', true);
+
+(async () => {
+  await initDb();
+  await bootstrapAdminUser(pool);
+})();
+
 app.listen(PORT, () => console.log(`Backend de Aromas de Té escuchando en :${PORT}`));

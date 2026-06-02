@@ -136,3 +136,42 @@ CREATE TABLE IF NOT EXISTS app_account_deletions (
   customer_id  text        PRIMARY KEY,
   requested_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Usuarios del panel de administración (/admin). El primer arranque
+-- bootstrapea automáticamente un usuario `admin` desde ADMIN_USER /
+-- ADMIN_PASSWORD del .env si la tabla está vacía. A partir de ahí, se
+-- gestionan desde el propio panel.
+--
+--   role = 'admin'  → puede crear/editar/borrar usuarios y todo lo demás.
+--   role = 'editor' → solo edita contenido (notificaciones, inicio); no
+--                     ve la pestaña de usuarios.
+--
+-- password_hash: formato "scrypt$N=16384,r=8,p=1$<salt-hex>$<hash-hex>"
+-- generado en auth.js (crypto.scrypt nativo, sin dependencias externas).
+CREATE TABLE IF NOT EXISTS app_admin_users (
+  id            bigserial   PRIMARY KEY,
+  username      text        NOT NULL UNIQUE,
+  password_hash text        NOT NULL,
+  role          text        NOT NULL DEFAULT 'editor',
+  enabled       boolean     NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  last_login_at timestamptz,
+  created_by    bigint,
+  CONSTRAINT app_admin_users_role_chk CHECK (role IN ('admin','editor'))
+);
+
+CREATE INDEX IF NOT EXISTS app_admin_users_username_lower_idx
+  ON app_admin_users (lower(username));
+
+-- Auditoría mínima de intentos fallidos de login (rate limiting por IP).
+-- Se purga sola: solo se conservan las últimas 24h.
+CREATE TABLE IF NOT EXISTS app_admin_login_attempts (
+  ip          text        NOT NULL,
+  attempted_at timestamptz NOT NULL DEFAULT now(),
+  success     boolean     NOT NULL,
+  username    text
+);
+
+CREATE INDEX IF NOT EXISTS app_admin_login_attempts_ip_time_idx
+  ON app_admin_login_attempts (ip, attempted_at DESC);
