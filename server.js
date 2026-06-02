@@ -769,6 +769,127 @@ app.post('/admin/me/password', adminAuth(), async (req, res) => {
   }
 });
 
+/* --- Estadísticas del panel (todos los roles) --- */
+
+// Métricas calculadas con consultas SQL sobre las tablas del propio
+// backend. No revela datos personales: solo conteos agregados. Lo
+// llama la pestaña "Estadísticas" del panel.
+app.get('/admin/stats', adminAuth(), async (_req, res) => {
+  try {
+    // 1) Instalaciones de la app (tokens push). Cada dispositivo tiene
+    //    un token único de Expo, así que es un buen proxy del nº de
+    //    instalaciones activas en el ecosistema.
+    const installs = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE updated_at > now() - interval '30 days')::int AS activos_30d,
+        COUNT(*) FILTER (WHERE updated_at > now() - interval  '7 days')::int AS activos_7d,
+        COUNT(*) FILTER (WHERE updated_at > now() - interval '24 hours')::int AS activos_24h,
+        COUNT(*) FILTER (WHERE platform = 'ios')::int     AS ios,
+        COUNT(*) FILTER (WHERE platform = 'android')::int AS android,
+        COUNT(*) FILTER (WHERE platform IS NULL OR platform NOT IN ('ios','android'))::int AS otros
+      FROM app_push_tokens
+    `);
+
+    // 2) Cuentas: cuántos dispositivos están vinculados a un cliente
+    //    (login con Customer Account API), cuántos tienen email
+    //    resuelto, cuántos clientes únicos hay, cuántas cuentas se han
+    //    borrado.
+    const cuentas = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE customer_id IS NOT NULL)::int AS dispositivos_con_login,
+        COUNT(*) FILTER (WHERE email IS NOT NULL)::int       AS dispositivos_con_email,
+        (SELECT COUNT(DISTINCT customer_id)::int FROM app_push_tokens WHERE customer_id IS NOT NULL) AS clientes_unicos,
+        (SELECT COUNT(*)::int FROM app_account_deletions) AS borradas
+      FROM app_push_tokens
+    `);
+
+    // 3) Notificaciones: volumen y tasa de apertura media (excluye las
+    //    que tuvieron 0 destinatarios para no tirar a la baja la
+    //    métrica con avisos de pedido sin app).
+    const notifs = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at > now() - interval  '7 days')::int AS enviadas_7d,
+        COUNT(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS enviadas_30d,
+        COALESCE(SUM(recipients) FILTER (WHERE created_at > now() - interval '30 days'), 0)::int AS total_envios_30d,
+        COALESCE((SELECT COUNT(*) FROM app_notification_reads r
+                    JOIN app_notifications n ON n.id = r.notification_id
+                   WHERE n.created_at > now() - interval '30 days'), 0)::int AS aperturas_30d
+      FROM app_notifications
+    `);
+
+    // 4) Notificaciones por categoría (últimos 30 días).
+    const porCategoria = await pool.query(`
+      SELECT COALESCE(NULLIF(category, ''), 'general') AS categoria,
+             COUNT(*)::int AS enviadas,
+             COALESCE(SUM(recipients), 0)::int AS total_envios
+        FROM app_notifications
+       WHERE created_at > now() - interval '30 days'
+       GROUP BY categoria
+       ORDER BY enviadas DESC
+    `);
+    // Aperturas por categoría en una segunda consulta (más simple y
+    // eficiente que una subconsulta correlacionada).
+    const aperturasCat = await pool.query(`
+      SELECT COALESCE(NULLIF(n.category, ''), 'general') AS categoria,
+             COUNT(*)::int AS aperturas
+        FROM app_notification_reads r
+        JOIN app_notifications n ON n.id = r.notification_id
+       WHERE n.created_at > now() - interval '30 days'
+       GROUP BY categoria
+    `);
+    const aperturasMap = new Map(aperturasCat.rows.map((r) => [r.categoria, r.aperturas]));
+    const categorias = porCategoria.rows.map((r) => ({
+      categoria: r.categoria,
+      enviadas: r.enviadas,
+      totalEnvios: r.total_envios,
+      aperturas: aperturasMap.get(r.categoria) || 0,
+    }));
+
+    // 5) Avisos automáticos de pedido (orders): cuántos se generaron
+    //    en los últimos 30 días, cuántos llegaron a algún dispositivo
+    //    y cuántos no encontraron destinatario (no había app/login del
+    //    cliente).
+    const pedidos = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE recipients > 0)::int AS entregados,
+        COUNT(*) FILTER (WHERE recipients = 0)::int AS sin_destinatario
+      FROM app_notifications
+      WHERE category = 'orders'
+        AND created_at > now() - interval '30 days'
+    `);
+
+    // 6) Engagement: lista de deseos y notas de cata.
+    const wishlist = await pool.query(`
+      SELECT COUNT(*)::int AS total,
+             COUNT(DISTINCT customer_id)::int AS clientes_con_wishlist
+        FROM app_wishlist
+    `);
+    const notas = await pool.query(`
+      SELECT COUNT(*)::int AS total,
+             COUNT(DISTINCT customer_id)::int AS clientes_con_notas,
+             COUNT(*) FILTER (WHERE rating = 'like')::int AS likes,
+             COUNT(*) FILTER (WHERE rating = 'dislike')::int AS dislikes
+        FROM app_tasting_notes
+    `);
+
+    res.json({
+      installs: installs.rows[0],
+      cuentas: cuentas.rows[0],
+      notificaciones: notifs.rows[0],
+      categorias,
+      pedidos: pedidos.rows[0],
+      wishlist: wishlist.rows[0],
+      notas: notas.rows[0],
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('GET /admin/stats:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 /* --- Gestión de usuarios (solo rol admin) --- */
 
 function publicUser(u) {

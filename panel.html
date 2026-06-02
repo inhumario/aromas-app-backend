@@ -29,6 +29,55 @@
   .panel.active { display: block; }
   .panel#panel-inicio { max-width: 1080px; }
   .panel#panel-usuarios { max-width: 760px; }
+  .panel#panel-stats { max-width: 1080px; }
+  /* Estadísticas */
+  .stats-grid {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    margin-top: 8px;
+  }
+  .stat-card {
+    background: #fff; border: 1px solid #E8DFD0; border-radius: 16px;
+    padding: 18px 20px;
+  }
+  .stat-card .stat-label {
+    font-size: 11px; font-weight: 800; color: #7A7A7A;
+    text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px;
+  }
+  .stat-card .stat-value {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 30px; font-weight: 400; color: #1A1A1A; line-height: 1.1;
+  }
+  .stat-card .stat-sub {
+    font-size: 12px; color: #7A7A7A; font-weight: 600; margin-top: 6px;
+  }
+  .stat-card.accent { background: #E6F0F2; border-color: #BfD9DC; }
+  .stat-card.accent .stat-label { color: #2B5159; }
+  .stat-card.accent .stat-value { color: #2B818B; }
+  .stat-section { margin-top: 28px; }
+  .stat-section h2 { margin-bottom: 6px; }
+  .stat-section .sub { margin-bottom: 16px; }
+  /* Tabla simple para la tabla por categoría */
+  .stat-table {
+    width: 100%; border-collapse: collapse; font-size: 13px; background: #fff;
+    border: 1px solid #E8DFD0; border-radius: 14px; overflow: hidden;
+  }
+  .stat-table th, .stat-table td {
+    text-align: left; padding: 10px 14px; border-bottom: 1px solid #F0E8DB;
+  }
+  .stat-table th {
+    font-size: 11px; font-weight: 800; color: #7A7A7A;
+    text-transform: uppercase; letter-spacing: .5px; background: #FCFAF5;
+  }
+  .stat-table tr:last-child td { border-bottom: none; }
+  .stat-table td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .stat-bar {
+    height: 6px; background: #F0E8DB; border-radius: 100px; margin-top: 6px;
+    overflow: hidden;
+  }
+  .stat-bar > span {
+    display: block; height: 100%; background: #2B818B;
+  }
   .grid-inicio {
     display: grid; gap: 20px; grid-template-columns: 1fr;
   }
@@ -314,6 +363,7 @@
   <button class="tab active" data-tab="enviar">Enviar</button>
   <button class="tab" data-tab="enviadas">Enviadas</button>
   <button class="tab" data-tab="inicio">Inicio</button>
+  <button class="tab" data-tab="stats">Estadísticas</button>
   <button class="tab" data-tab="cuenta">Mi cuenta</button>
   <button class="tab admin-only" data-tab="usuarios">Usuarios</button>
 </div>
@@ -508,6 +558,15 @@
       <button id="savePopup">Guardar popup</button>
       <div id="popupResult" style="margin-top:12px; min-height:18px; font-size:14px; font-weight:600; text-align:center;"></div>
     </div>
+  </div>
+</div>
+
+<!-- Pestaña: estadísticas (todos los roles) -->
+<div class="panel" id="panel-stats">
+  <div class="card">
+    <h1>Estadísticas</h1>
+    <div class="sub" id="statsSubtitle">Cargando…</div>
+    <div id="statsContent"></div>
   </div>
 </div>
 
@@ -914,6 +973,7 @@
   /* --- Pestañas --- */
 
   var historyLoaded = false;
+  var statsLoaded = false;
 
   function selectTab(name) {
     document.querySelectorAll('.tab').forEach(function (t) {
@@ -926,11 +986,149 @@
     if (name === 'usuarios' && !usersLoaded && currentUser && currentUser.role === 'admin') {
       usersLoaded = true; loadUsers();
     }
+    if (name === 'stats') {
+      // Recargar cada vez (los datos cambian con cada notif/pedido).
+      loadStats();
+    }
   }
 
   document.querySelectorAll('.tab').forEach(function (tab) {
     tab.onclick = function () { selectTab(this.getAttribute('data-tab')); };
   });
+
+  /* --- Estadísticas --- */
+
+  function statCard(label, value, sub, accent) {
+    return '<div class="stat-card' + (accent ? ' accent' : '') + '">'
+      + '<div class="stat-label">' + esc(label) + '</div>'
+      + '<div class="stat-value">' + esc(String(value)) + '</div>'
+      + (sub ? '<div class="stat-sub">' + sub + '</div>' : '')
+      + '</div>';
+  }
+
+  function pct(n, total) {
+    if (!total) return '0%';
+    return Math.round((n / total) * 100) + '%';
+  }
+
+  function renderStats(d) {
+    var i = d.installs || {};
+    var c = d.cuentas || {};
+    var n = d.notificaciones || {};
+    var p = d.pedidos || {};
+    var w = d.wishlist || {};
+    var ta = d.notas || {};
+
+    var ratioAperturas = n.total_envios_30d
+      ? Math.round((n.aperturas_30d / n.total_envios_30d) * 100)
+      : 0;
+
+    var totalReviews = (ta.likes || 0) + (ta.dislikes || 0);
+    var pctLike = totalReviews ? Math.round((ta.likes / totalReviews) * 100) : 0;
+
+    var html = '';
+
+    // Resumen: instalaciones
+    html += '<div class="stat-section"><h2>App instalada</h2>'
+      + '<div class="sub">Dispositivos con la app instalada y los permisos de notificación aceptados.</div>'
+      + '<div class="stats-grid">'
+        + statCard('Total instalaciones', i.total ?? 0, 'iOS ' + (i.ios||0) + ' · Android ' + (i.android||0) + (i.otros ? ' · Otros ' + i.otros : ''), true)
+        + statCard('Activas últimos 30 días', i.activos_30d ?? 0)
+        + statCard('Activas últimos 7 días', i.activos_7d ?? 0)
+        + statCard('Activas últimas 24 h', i.activos_24h ?? 0)
+      + '</div></div>';
+
+    // Cuentas validadas
+    html += '<div class="stat-section"><h2>Cuentas</h2>'
+      + '<div class="sub">Clientes que han iniciado sesión en la app (cuenta validada con Customer Account API).</div>'
+      + '<div class="stats-grid">'
+        + statCard('Clientes con cuenta validada', c.clientes_unicos ?? 0, c.dispositivos_con_login + ' dispositivos en total', true)
+        + statCard('Dispositivos con email resuelto', c.dispositivos_con_email ?? 0,
+            (i.total ? pct(c.dispositivos_con_email||0, i.total) + ' de las instalaciones' : ''))
+        + statCard('Cobertura de login', i.total ? pct(c.dispositivos_con_login||0, i.total) : '—',
+            'de las instalaciones tienen sesión iniciada')
+        + statCard('Cuentas borradas', c.borradas ?? 0, 'Solicitudes de eliminación desde la app (App Store 5.1.1(v))')
+      + '</div></div>';
+
+    // Notificaciones
+    html += '<div class="stat-section"><h2>Notificaciones</h2>'
+      + '<div class="sub">Volumen y rendimiento de los avisos enviados desde el panel y los automáticos de pedido.</div>'
+      + '<div class="stats-grid">'
+        + statCard('Enviadas últimos 7 días', n.enviadas_7d ?? 0)
+        + statCard('Enviadas últimos 30 días', n.enviadas_30d ?? 0)
+        + statCard('Tasa media de apertura', ratioAperturas + '%',
+            (n.aperturas_30d||0) + ' aperturas sobre ' + (n.total_envios_30d||0) + ' envíos (30 d)', true)
+        + statCard('Pedidos avisados (30 d)', p.entregados ?? 0,
+            (p.total ? pct(p.entregados||0, p.total) + ' de ' + p.total + ' pedidos' : 'Sin pedidos'))
+      + '</div>';
+
+    // Tabla por categoría
+    if (d.categorias && d.categorias.length) {
+      var maxEnv = Math.max.apply(null, d.categorias.map(function(c){return c.totalEnvios;}));
+      html += '<table class="stat-table" style="margin-top:18px;">'
+        + '<thead><tr><th>Categoría</th><th class="num" style="text-align:right">Notifs</th>'
+        + '<th class="num" style="text-align:right">Envíos</th>'
+        + '<th class="num" style="text-align:right">Aperturas</th>'
+        + '<th class="num" style="text-align:right">% apertura</th></tr></thead><tbody>';
+      d.categorias.forEach(function (row) {
+        var p = row.totalEnvios ? Math.round((row.aperturas / row.totalEnvios) * 100) : 0;
+        html += '<tr>'
+          + '<td>' + esc(row.categoria) + '</td>'
+          + '<td class="num" style="text-align:right">' + row.enviadas + '</td>'
+          + '<td class="num" style="text-align:right">' + row.totalEnvios + '</td>'
+          + '<td class="num" style="text-align:right">' + row.aperturas + '</td>'
+          + '<td class="num" style="text-align:right">' + p + '%'
+            + '<div class="stat-bar"><span style="width:' + p + '%"></span></div>'
+          + '</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+
+    // Detalle pedidos
+    html += '<div class="stats-grid" style="margin-top:18px;">'
+        + statCard('Pedidos sin destinatario (30 d)', p.sin_destinatario ?? 0,
+            'Avisos automáticos que no encontraron app/login del cliente')
+        + statCard('Total pedidos confirmados (30 d)', p.total ?? 0,
+            'Cualquiera, hayan o no recibido notificación')
+      + '</div>';
+    html += '</div>'; // /stat-section notifs
+
+    // Engagement
+    html += '<div class="stat-section"><h2>Engagement</h2>'
+      + '<div class="sub">Cómo usan los clientes la lista de deseos y las notas de cata.</div>'
+      + '<div class="stats-grid">'
+        + statCard('Productos en wishlist', w.total ?? 0,
+            (w.clientes_con_wishlist||0) + ' clientes con al menos uno')
+        + statCard('Notas de cata', ta.total ?? 0,
+            (ta.clientes_con_notas||0) + ' clientes han valorado')
+        + statCard('Ratio "me gusta"', totalReviews ? pctLike + '%' : '—',
+            (ta.likes||0) + ' 👍 · ' + (ta.dislikes||0) + ' 👎', true)
+      + '</div></div>';
+
+    $('statsContent').innerHTML = html;
+    var gen = d.generatedAt ? new Date(d.generatedAt) : new Date();
+    $('statsSubtitle').textContent = 'Actualizado el ' + gen.toLocaleString('es-ES');
+  }
+
+  async function loadStats() {
+    $('statsSubtitle').textContent = 'Cargando…';
+    $('statsContent').innerHTML = '';
+    try {
+      var res = await api('/admin/stats');
+      if (!res.ok) {
+        var d = await res.json().catch(function () { return {}; });
+        $('statsSubtitle').textContent = msgFor(d, res.status);
+        return;
+      }
+      var data = await res.json();
+      renderStats(data);
+      statsLoaded = true;
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        $('statsSubtitle').textContent = 'No se pudieron cargar las estadísticas.';
+      }
+    }
+  }
 
   /* --- Mi cuenta: email --- */
 
