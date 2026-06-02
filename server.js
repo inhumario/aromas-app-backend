@@ -22,12 +22,15 @@ import {
   hashPassword,
   isLoginBlocked,
   isSecureRequest,
+  isValidEmail,
+  randomToken,
   readCookie,
   recordLoginAttempt,
   signSession,
   verifyPassword,
   verifySession,
 } from './auth.js';
+import { sendEmail } from './mailer.js';
 
 const { Pool } = pg;
 
@@ -63,25 +66,37 @@ async function initDb() {
 
 /* ----------------------- Verificación del cliente -------------------- */
 
-// token -> { customerId, expiresAt }
+// token -> { customer: { id, email }, expiresAt }
 const tokenCache = new Map();
 
-async function resolveCustomerId(token) {
+/** Verifica el token de cliente contra la Customer Account API de Shopify
+ *  y devuelve `{id, email}`. Devuelve null si el token no es válido. */
+async function resolveCustomer(token) {
   const cached = tokenCache.get(token);
-  if (cached && cached.expiresAt > Date.now()) return cached.customerId;
+  if (cached && cached.expiresAt > Date.now()) return cached.customer;
 
   const res = await fetch(CUSTOMER_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: token },
-    body: JSON.stringify({ query: '{ customer { id } }' }),
+    body: JSON.stringify({
+      query: '{ customer { id emailAddress { emailAddress } } }',
+    }),
   });
   if (!res.ok) return null;
   const json = await res.json();
-  const customerId = json?.data?.customer?.id ?? null;
-  if (customerId) {
-    tokenCache.set(token, { customerId, expiresAt: Date.now() + 5 * 60_000 });
-  }
-  return customerId;
+  const id = json?.data?.customer?.id ?? null;
+  if (!id) return null;
+  const email = json?.data?.customer?.emailAddress?.emailAddress || null;
+  const customer = { id, email };
+  tokenCache.set(token, { customer, expiresAt: Date.now() + 5 * 60_000 });
+  return customer;
+}
+
+// Compat: rutas viejas que solo querían el id. Pone email a null si solo
+// se pidió por id.
+async function resolveCustomerId(token) {
+  const c = await resolveCustomer(token);
+  return c?.id ?? null;
 }
 
 async function auth(req, res, next) {
@@ -110,12 +125,12 @@ async function loadUser(req) {
   const session = verifySession(readCookie(req));
   if (!session?.uid) return null;
   const { rows } = await pool.query(
-    'SELECT id, username, role, enabled FROM app_admin_users WHERE id = $1',
+    'SELECT id, username, role, enabled, email FROM app_admin_users WHERE id = $1',
     [session.uid],
   );
   const u = rows[0];
   if (!u || !u.enabled) return null;
-  return { id: Number(u.id), username: u.username, role: u.role };
+  return { id: Number(u.id), username: u.username, role: u.role, email: u.email };
 }
 
 function adminAuth(opts = {}) {
@@ -341,23 +356,37 @@ app.post('/push/register', async (req, res) => {
   if (!token || typeof token !== 'string') {
     return res.status(400).json({ error: 'token_required' });
   }
-  // Si la app envía el token de cliente, el dispositivo queda asociado a su
-  // cuenta para recibir en el buzón los avisos de sus pedidos.
+  // Si la app envía el token de cliente, el dispositivo queda asociado a
+  // su cuenta (customer_id) y a su email para recibir en el buzón los
+  // avisos de sus pedidos. El email permite localizar al dispositivo aun
+  // cuando el pedido se hizo desde la web con otra cuenta del mismo
+  // correo.
   let customerId = null;
+  let email = null;
   const authToken = (req.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (authToken) {
     try {
-      customerId = await resolveCustomerId(authToken);
+      const c = await resolveCustomer(authToken);
+      if (c) { customerId = c.id; email = c.email; }
     } catch {
-      customerId = null;
+      customerId = null; email = null;
     }
   }
+  // ON CONFLICT (token): si el cliente no está logado ahora (customerId/
+  // email null) pero antes sí lo estaba, NO pisamos lo que ya había
+  // guardado. Así mantenemos la asociación cliente↔dispositivo cuando el
+  // token de sesión caduca y el dispositivo solo se renueva el push.
   await pool.query(
-    `INSERT INTO app_push_tokens (token, platform, prefs, customer_id, updated_at)
-       VALUES ($1, $2, $3, $4, now())
+    `INSERT INTO app_push_tokens (token, platform, prefs, customer_id, email, updated_at)
+       VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT (token)
-       DO UPDATE SET platform = $2, prefs = $3, customer_id = $4, updated_at = now()`,
-    [token, platform ?? null, JSON.stringify(prefs ?? {}), customerId],
+       DO UPDATE SET
+         platform    = $2,
+         prefs       = $3,
+         customer_id = COALESCE($4, app_push_tokens.customer_id),
+         email       = COALESCE($5, app_push_tokens.email),
+         updated_at  = now()`,
+    [token, platform ?? null, JSON.stringify(prefs ?? {}), customerId, email],
   );
   res.json({ ok: true });
 });
@@ -464,6 +493,12 @@ app.get('/admin', (_req, res) => {
   res.type('html').send(PANEL_HTML);
 });
 
+// Alias para el enlace de recuperación que llega por email: sirve el mismo
+// HTML y el panel detecta el `?token=` en JS para mostrar el form de reset.
+app.get('/admin/reset', (_req, res) => {
+  res.type('html').send(PANEL_HTML);
+});
+
 /* --- Sesión: login / logout / quién soy --- */
 
 app.post('/admin/login', async (req, res) => {
@@ -506,8 +541,152 @@ app.post('/admin/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+/* --- Recuperación de contraseña por email --- */
+
+const RESET_TTL_MS = 60 * 60 * 1000; // 1 hora
+
+// Solicitud de recuperación. Siempre devuelve `{ok:true}` aunque el email no
+// exista en la BD: evita filtrar qué emails están registrados. El rate-limit
+// del login también se aplica aquí (mismas tablas) para frenar abusos.
+app.post('/admin/forgot-password', async (req, res) => {
+  const ip = clientIp(req);
+  const { email } = req.body || {};
+  if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
+  if (await isLoginBlocked(pool, ip)) {
+    return res.status(429).json({ error: 'too_many_attempts' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, username, email FROM app_admin_users
+        WHERE lower(email) = lower($1) AND enabled = true`,
+      [email.trim()],
+    );
+    const u = rows[0];
+    // Registra el intento (success=false; los exitosos solo se cuentan al
+    // resetear). Esto contribuye al rate-limit por IP.
+    await recordLoginAttempt(pool, ip, !!u, email.trim());
+    if (u) {
+      const token = randomToken();
+      await pool.query(
+        `INSERT INTO app_admin_password_resets (token, user_id, expires_at)
+           VALUES ($1, $2, now() + ($3 || ' milliseconds')::interval)`,
+        [token, u.id, String(RESET_TTL_MS)],
+      );
+      const link = `${PUBLIC_BASE}/admin/reset?token=${token}`;
+      const body =
+        `Hola ${u.username},\n\n` +
+        `Hemos recibido una solicitud para cambiar la contraseña de tu cuenta del panel de Aromas de Té.\n\n` +
+        `Para definir una nueva contraseña, abre este enlace (caduca en 1 hora):\n\n${link}\n\n` +
+        `Si no has sido tú, ignora este correo: tu contraseña actual seguirá siendo válida.\n\n` +
+        `— Panel de Aromas de Té`;
+      // No bloqueamos la respuesta esperando al SMTP: si el envío falla,
+      // queda un log y el usuario puede volver a intentarlo.
+      sendEmail({
+        to: u.email,
+        subject: 'Recuperar contraseña del panel — Aromas de Té',
+        text: body,
+      }).catch((err) => console.error('sendEmail reset:', err.message));
+    }
+    // Respuesta neutra para no revelar si el email existe.
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /admin/forgot-password:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// Verifica si un token de reset sigue siendo válido (sin gastarlo). La UI
+// lo llama al cargar la pantalla de "establecer nueva contraseña" para
+// avisar antes de que el usuario escriba si el enlace caducó.
+app.get('/admin/reset-password/check', async (req, res) => {
+  const token = String(req.query.token || '');
+  if (!token) return res.json({ valid: false });
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.expires_at, r.used_at, u.username, u.enabled
+         FROM app_admin_password_resets r
+         JOIN app_admin_users u ON u.id = r.user_id
+        WHERE r.token = $1`,
+      [token],
+    );
+    const r = rows[0];
+    const valid = !!r && !r.used_at && new Date(r.expires_at) >= new Date() && r.enabled;
+    res.json({ valid, username: valid ? r.username : null });
+  } catch (err) {
+    console.error('GET /admin/reset-password/check:', err.message);
+    res.json({ valid: false });
+  }
+});
+
+// Reseteo: el cliente envía `{token, newPassword}`. Si el token es válido y
+// no ha caducado ni se ha usado, fija la nueva contraseña.
+app.post('/admin/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body || {};
+  if (typeof token !== 'string' || token.length < 32) {
+    return res.status(400).json({ error: 'invalid_token' });
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < 10) {
+    return res.status(400).json({ error: 'password_too_short' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.token, r.user_id, r.expires_at, r.used_at,
+              u.username, u.enabled
+         FROM app_admin_password_resets r
+         JOIN app_admin_users u ON u.id = r.user_id
+        WHERE r.token = $1`,
+      [token],
+    );
+    const r = rows[0];
+    if (!r || r.used_at || new Date(r.expires_at) < new Date() || !r.enabled) {
+      return res.status(400).json({ error: 'invalid_or_expired' });
+    }
+    const hash = await hashPassword(newPassword);
+    await pool.query(
+      'UPDATE app_admin_users SET password_hash = $1, updated_at = now() WHERE id = $2',
+      [hash, r.user_id],
+    );
+    await pool.query(
+      'UPDATE app_admin_password_resets SET used_at = now() WHERE token = $1',
+      [token],
+    );
+    // Purga oportunista de tokens caducados/usados de más de 7 días.
+    await pool.query(
+      `DELETE FROM app_admin_password_resets
+        WHERE expires_at < now() - interval '7 days'`,
+    );
+    res.json({ ok: true, username: r.username });
+  } catch (err) {
+    console.error('POST /admin/reset-password:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 app.get('/admin/me', adminAuth(), (req, res) => {
   res.json({ user: req.user });
+});
+
+// Cambia el email del usuario logado. Se usa para la recuperación de
+// contraseña, así que es importante que sea uno al que el usuario tenga
+// acceso real. Permite borrarlo enviando `null`.
+app.post('/admin/me/email', adminAuth(), async (req, res) => {
+  const { email } = req.body || {};
+  let value = null;
+  if (email !== null && email !== '' && email !== undefined) {
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
+    value = email.trim();
+  }
+  try {
+    await pool.query(
+      'UPDATE app_admin_users SET email = $1, updated_at = now() WHERE id = $2',
+      [value, req.user.id],
+    );
+    res.json({ ok: true, email: value });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'email_taken' });
+    console.error('POST /admin/me/email:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
 });
 
 // Cambiar la contraseña del usuario logado. Pide la actual para evitar
@@ -547,6 +726,7 @@ function publicUser(u) {
   return {
     id: Number(u.id),
     username: u.username,
+    email: u.email || null,
     role: u.role,
     enabled: u.enabled,
     createdAt: u.created_at,
@@ -563,7 +743,7 @@ function validRole(s) { return s === 'admin' || s === 'editor'; }
 app.get('/admin/users', adminAuth({ requireAdmin: true }), async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, username, role, enabled, created_at, updated_at, last_login_at
+      `SELECT id, username, email, role, enabled, created_at, updated_at, last_login_at
          FROM app_admin_users ORDER BY username`,
     );
     res.json({ items: rows.map(publicUser) });
@@ -574,23 +754,32 @@ app.get('/admin/users', adminAuth({ requireAdmin: true }), async (_req, res) => 
 });
 
 app.post('/admin/users', adminAuth({ requireAdmin: true }), async (req, res) => {
-  const { username, password, role } = req.body || {};
+  const { username, password, role, email } = req.body || {};
   if (!validUsername(username)) return res.status(400).json({ error: 'invalid_username' });
   if (!validRole(role)) return res.status(400).json({ error: 'invalid_role' });
   if (typeof password !== 'string' || password.length < 10) {
     return res.status(400).json({ error: 'password_too_short' });
   }
+  let emailValue = null;
+  if (email) {
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
+    emailValue = email.trim();
+  }
   try {
     const hash = await hashPassword(password);
     const { rows } = await pool.query(
-      `INSERT INTO app_admin_users (username, password_hash, role, created_by)
-         VALUES ($1, $2, $3, $4)
-       RETURNING id, username, role, enabled, created_at, updated_at, last_login_at`,
-      [username.trim(), hash, role, req.user.id],
+      `INSERT INTO app_admin_users (username, password_hash, role, email, created_by)
+         VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, username, email, role, enabled, created_at, updated_at, last_login_at`,
+      [username.trim(), hash, role, emailValue, req.user.id],
     );
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'username_taken' });
+    if (err.code === '23505') {
+      // Distinguir por la constraint que falló (username vs email).
+      const which = /email/i.test(err.constraint || err.detail || '') ? 'email_taken' : 'username_taken';
+      return res.status(409).json({ error: which });
+    }
     console.error('POST /admin/users:', err.message);
     res.status(500).json({ error: 'server_error' });
   }
@@ -599,7 +788,7 @@ app.post('/admin/users', adminAuth({ requireAdmin: true }), async (req, res) => 
 app.patch('/admin/users/:id', adminAuth({ requireAdmin: true }), async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad_id' });
-  const { role, enabled, newPassword } = req.body || {};
+  const { role, enabled, newPassword, email } = req.body || {};
   const sets = [];
   const params = [];
   if (role !== undefined) {
@@ -624,18 +813,27 @@ app.patch('/admin/users/:id', adminAuth({ requireAdmin: true }), async (req, res
     const hash = await hashPassword(newPassword);
     params.push(hash); sets.push(`password_hash = $${params.length}`);
   }
+  if (email !== undefined) {
+    let v = null;
+    if (email !== null && email !== '') {
+      if (!isValidEmail(email)) return res.status(400).json({ error: 'invalid_email' });
+      v = String(email).trim();
+    }
+    params.push(v); sets.push(`email = $${params.length}`);
+  }
   if (!sets.length) return res.status(400).json({ error: 'nothing_to_update' });
   sets.push('updated_at = now()');
   params.push(id);
   try {
     const { rows } = await pool.query(
       `UPDATE app_admin_users SET ${sets.join(', ')} WHERE id = $${params.length}
-         RETURNING id, username, role, enabled, created_at, updated_at, last_login_at`,
+         RETURNING id, username, email, role, enabled, created_at, updated_at, last_login_at`,
       params,
     );
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'email_taken' });
     console.error('PATCH /admin/users:', err.message);
     res.status(500).json({ error: 'server_error' });
   }

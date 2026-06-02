@@ -63,6 +63,11 @@ export async function verifyPassword(plain, stored) {
   return timingSafeEqual(derived, expected);
 }
 
+/** Token aleatorio en hexadecimal para enlaces de recuperación. */
+export function randomToken(bytes = 32) {
+  return randomBytes(bytes).toString('hex');
+}
+
 // ---------- Cookies de sesión ----------
 
 // Secreto para firmar las cookies. Si no se define, se genera al arrancar
@@ -151,27 +156,49 @@ export function readCookie(req) {
 /**
  * Si la tabla de usuarios está vacía y hay ADMIN_USER+ADMIN_PASSWORD en el
  * .env, crea ese usuario como admin. Idempotente.
+ *
+ * Además, si el admin existente no tiene email definido y hay `ADMIN_EMAIL`
+ * en el .env, se lo asigna (sin pisar uno ya puesto): así la recuperación
+ * de contraseña funciona desde el primer arranque tras añadir email a la
+ * tabla.
  */
 export async function bootstrapAdminUser(pool) {
   const envUser = process.env.ADMIN_USER;
   const envPass = process.env.ADMIN_PASSWORD;
+  const envEmail = process.env.ADMIN_EMAIL;
   if (!envUser || !envPass) return;
   try {
     const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM app_admin_users');
-    if (rows[0]?.n > 0) return;
-    // Si la contraseña del .env es < 10 chars, la aceptamos igual para no
-    // dejar el panel sin acceso: el usuario podrá cambiarla desde dentro.
-    const hash = await hashPasswordRelaxed(envPass);
-    await pool.query(
-      `INSERT INTO app_admin_users (username, password_hash, role)
-         VALUES ($1, $2, 'admin')
-         ON CONFLICT (username) DO NOTHING`,
-      [envUser, hash],
-    );
-    console.log(`Usuario admin bootstrapeado desde .env: ${envUser}`);
+    if (rows[0]?.n === 0) {
+      const hash = await hashPasswordRelaxed(envPass);
+      await pool.query(
+        `INSERT INTO app_admin_users (username, password_hash, role, email)
+           VALUES ($1, $2, 'admin', $3)
+           ON CONFLICT (username) DO NOTHING`,
+        [envUser, hash, envEmail || null],
+      );
+      console.log(`Usuario admin bootstrapeado desde .env: ${envUser}`);
+    } else if (envEmail) {
+      // Tabla ya con usuarios: asigna ADMIN_EMAIL al admin que coincida con
+      // ADMIN_USER si no tiene email todavía.
+      await pool.query(
+        `UPDATE app_admin_users SET email = $1
+           WHERE lower(username) = lower($2) AND email IS NULL`,
+        [envEmail, envUser],
+      );
+    }
   } catch (err) {
     console.error('bootstrapAdminUser:', err.message);
   }
+}
+
+/** Validador estricto de email para inputs del panel. */
+export function isValidEmail(s) {
+  if (typeof s !== 'string') return false;
+  const t = s.trim();
+  if (t.length < 5 || t.length > 254) return false;
+  // Sin pretender RFC: una @, sin espacios, dominio con un punto.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
 }
 
 // Variante de hash que NO valida longitud mínima (solo para bootstrap).

@@ -55,15 +55,26 @@ export async function handleOrderWebhook(pool, topic, order) {
   if (!msg) return { ok: true, skipped: 'topic' };
 
   const numericId = order?.customer?.id;
-  if (!numericId) return { ok: true, skipped: 'no_customer' };
+  const email = order?.customer?.email || order?.email || null;
+  if (!numericId && !email) return { ok: true, skipped: 'no_customer' };
 
-  // El customer_id se guarda como GID (gid://shopify/Customer/NNN); el webhook
-  // trae el id numérico. Se cruzan los dispositivos con la categoría activada.
+  // Busca el dispositivo del cliente por dos vías:
+  //   - customer_id: gid://shopify/Customer/<id> coincidente con el id
+  //     numérico del webhook (cliente que ha hecho login en la app).
+  //   - email: dispositivos cuyo cliente logado tenga el mismo email que
+  //     el del pedido (cubre el caso de pedidos hechos desde la web con
+  //     una cuenta de Shopify distinta a la del login en la app, mismo
+  //     correo). Si la app no resolvió el email (versiones antiguas o
+  //     sesión caducada), simplemente no aporta nada y se queda en el
+  //     match por customer_id.
   const { rows } = await pool.query(
-    `SELECT token FROM app_push_tokens
-       WHERE customer_id LIKE $1
-         AND COALESCE((prefs ->> 'orders')::boolean, true) = true`,
-    [`%/${numericId}`],
+    `SELECT DISTINCT token FROM app_push_tokens
+       WHERE COALESCE((prefs ->> 'orders')::boolean, true) = true
+         AND (
+              ($1::text IS NOT NULL AND customer_id LIKE $1)
+           OR ($2::text IS NOT NULL AND lower(email) = lower($2))
+         )`,
+    [numericId ? `%/${numericId}` : null, email],
   );
   const tokens = rows.map((r) => r.token);
 

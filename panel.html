@@ -148,12 +148,24 @@
     background: #fff; color: #C8443A; border: 1px solid #E8DFD0;
     font-size: 12px; font-weight: 800;
   }
-  /* Pantalla de login (cuando no hay sesión) */
-  #login-screen {
+  /* Pantallas de auth: login / forgot / reset */
+  #login-screen, #forgot-screen, #reset-screen {
     width: 100%; max-width: 420px; margin-top: 32px;
   }
-  #login-screen .card { padding: 32px; }
-  #login-screen h1 { margin-bottom: 4px; }
+  #login-screen .card,
+  #forgot-screen .card,
+  #reset-screen .card { padding: 32px; }
+  #login-screen h1, #forgot-screen h1, #reset-screen h1 { margin-bottom: 4px; }
+  .forgot-link {
+    text-align: center; margin: 18px 0 0; font-size: 13px;
+  }
+  .forgot-link a {
+    color: #2B818B; text-decoration: none; font-weight: 700;
+  }
+  .forgot-link a:hover { text-decoration: underline; }
+  #forgotResult, #resetResult {
+    margin-top: 14px; font-size: 14px; font-weight: 600; text-align: center; min-height: 20px;
+  }
   /* Tabla de usuarios */
   .user-row {
     display: grid; grid-template-columns: 1fr auto; gap: 12px;
@@ -208,6 +220,54 @@
     <input id="loginPass" type="password" autocomplete="current-password" />
     <button id="loginBtn">Entrar</button>
     <div id="loginResult"></div>
+    <p class="forgot-link">
+      <a href="#" id="forgotLink">¿Has olvidado tu contraseña?</a>
+    </p>
+  </div>
+</div>
+
+<!-- Pantalla "olvidé mi contraseña": pide email y manda enlace -->
+<div id="forgot-screen" class="hidden">
+  <div class="card">
+    <h1>Recuperar contraseña</h1>
+    <div class="sub">Te enviaremos un enlace para definir una contraseña nueva.</div>
+    <label for="forgotEmail">Tu email</label>
+    <input id="forgotEmail" type="email" autocomplete="email" autocapitalize="none" autocorrect="off" />
+    <p class="hint">Usa el email asociado a tu cuenta del panel.</p>
+    <button id="forgotBtn">Enviar enlace</button>
+    <div id="forgotResult"></div>
+    <p class="forgot-link">
+      <a href="#" id="backToLogin">Volver al inicio de sesión</a>
+    </p>
+  </div>
+</div>
+
+<!-- Pantalla "establecer nueva contraseña" (al llegar con ?token=...) -->
+<div id="reset-screen" class="hidden">
+  <div class="card">
+    <h1>Nueva contraseña</h1>
+    <div class="sub" id="resetSub">Define una contraseña nueva para tu cuenta del panel.</div>
+
+    <div id="resetForm">
+      <label for="resetPass1">Contraseña nueva</label>
+      <input id="resetPass1" type="password" autocomplete="new-password" />
+      <p class="hint">Mínimo 10 caracteres.</p>
+
+      <label for="resetPass2">Repite la contraseña</label>
+      <input id="resetPass2" type="password" autocomplete="new-password" />
+
+      <button id="resetBtn">Guardar contraseña</button>
+      <div id="resetResult"></div>
+    </div>
+
+    <div id="resetInvalid" class="hidden">
+      <p style="font-size:14px; color:#C8443A; font-weight:700;">El enlace ya no es válido. Caducan a la hora de pedirlos y solo pueden usarse una vez.</p>
+      <p class="forgot-link"><a href="#" id="resetGoForgot">Pedir un enlace nuevo</a></p>
+    </div>
+
+    <p class="forgot-link" id="resetBackLogin">
+      <a href="#" id="backToLoginFromReset">Volver al inicio de sesión</a>
+    </p>
   </div>
 </div>
 
@@ -425,7 +485,18 @@
 <div class="panel" id="panel-cuenta">
   <div class="card">
     <h1>Mi cuenta</h1>
-    <div class="sub">Cambia tu contraseña de acceso al panel</div>
+    <div class="sub">Tu email y tu contraseña de acceso al panel</div>
+
+    <label for="myEmail">Email para recuperar la contraseña</label>
+    <input id="myEmail" type="email" autocomplete="email" autocapitalize="none" autocorrect="off" />
+    <p class="hint">Si lo dejas vacío, no podrás usar "olvidé mi contraseña". Usa uno
+      al que tengas acceso real.</p>
+    <button id="saveEmailBtn">Guardar email</button>
+    <div id="saveEmailResult"></div>
+
+    <hr class="rule" />
+
+    <h2 style="margin-top:6px">Cambiar contraseña</h2>
 
     <label for="curPass">Contraseña actual</label>
     <input id="curPass" type="password" autocomplete="current-password" />
@@ -463,6 +534,9 @@
         </select>
       </div>
     </div>
+    <label for="newUserEmail">Email (opcional)</label>
+    <input id="newUserEmail" type="email" placeholder="ej. maria@aromasdete.com" autocapitalize="none" />
+    <p class="hint">Necesario si quieres que pueda recuperar su contraseña por correo.</p>
     <label for="newUserPass">Contraseña inicial</label>
     <input id="newUserPass" type="password" autocomplete="new-password" />
     <p class="hint">Mínimo 10 caracteres. El usuario podrá cambiarla cuando entre.</p>
@@ -509,7 +583,11 @@
     password_too_short: 'La contraseña debe tener al menos 10 caracteres.',
     invalid_username: 'Usuario inválido. Usa 3-40 caracteres (letras, números, . _ -).',
     invalid_role: 'Rol inválido.',
+    invalid_email: 'El email no es válido.',
+    email_taken: 'Ese email ya está asignado a otro usuario.',
     username_taken: 'Ya existe un usuario con ese nombre.',
+    invalid_token: 'El enlace de recuperación no es correcto.',
+    invalid_or_expired: 'El enlace ya no es válido (caducó o se usó antes).',
     cannot_delete_self: 'No puedes borrar tu propio usuario.',
     cannot_demote_self: 'No puedes quitarte el rol de administrador a ti mismo.',
     cannot_disable_self: 'No puedes desactivarte a ti mismo.',
@@ -534,7 +612,14 @@
     return res;
   }
 
+  function hideAuthScreens() {
+    $('login-screen').classList.add('hidden');
+    $('forgot-screen').classList.add('hidden');
+    $('reset-screen').classList.add('hidden');
+  }
+
   function showLogin(msg, info) {
+    hideAuthScreens();
     $('login-screen').classList.remove('hidden');
     $('topbar').classList.add('hidden');
     $('tabs').classList.add('hidden');
@@ -551,8 +636,58 @@
     }, 50);
   }
 
+  function hideAppPanels() {
+    // En el primer render, panel#panel-enviar trae .active por defecto
+    // del HTML; durante las pantallas de auth no debe verse ninguno.
+    document.querySelectorAll('.panel').forEach(function (p) {
+      p.classList.remove('active');
+    });
+  }
+
+  function showForgot() {
+    hideAuthScreens();
+    hideAppPanels();
+    $('forgot-screen').classList.remove('hidden');
+    $('topbar').classList.add('hidden');
+    $('tabs').classList.add('hidden');
+    $('forgotResult').textContent = '';
+    setTimeout(function () { $('forgotEmail').focus(); }, 50);
+  }
+
+  function showResetScreen(token) {
+    hideAuthScreens();
+    hideAppPanels();
+    $('reset-screen').classList.remove('hidden');
+    $('topbar').classList.add('hidden');
+    $('tabs').classList.add('hidden');
+    $('resetForm').classList.add('hidden');
+    $('resetInvalid').classList.add('hidden');
+    $('resetSub').textContent = 'Comprobando enlace…';
+    fetch('/admin/reset-password/check?token=' + encodeURIComponent(token))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.valid) {
+          $('resetSub').textContent = 'Define una contraseña nueva para "' + (d.username || 'tu cuenta') + '".';
+          $('resetForm').classList.remove('hidden');
+          setTimeout(function () { $('resetPass1').focus(); }, 50);
+        } else {
+          $('resetSub').textContent = '';
+          $('resetInvalid').classList.remove('hidden');
+        }
+      })
+      .catch(function () {
+        $('resetSub').textContent = '';
+        $('resetInvalid').classList.remove('hidden');
+      });
+  }
+
+  function getResetToken() {
+    var m = /[?&]token=([^&]+)/.exec(location.search);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
   function showPanel() {
-    $('login-screen').classList.add('hidden');
+    hideAuthScreens();
     $('topbar').classList.remove('hidden');
     $('tabs').classList.remove('hidden');
     // Pinta cabecera con quién soy.
@@ -564,6 +699,8 @@
     document.querySelectorAll('.admin-only').forEach(function (el) {
       el.classList.toggle('hidden', currentUser.role !== 'admin');
     });
+    // Email actual en "Mi cuenta".
+    if ($('myEmail')) $('myEmail').value = currentUser.email || '';
     // Activa la pestaña actualmente marcada (por defecto "enviar").
     var active = document.querySelector('.tab.active');
     var name = active ? active.getAttribute('data-tab') : 'enviar';
@@ -572,6 +709,10 @@
   }
 
   async function checkSession() {
+    // Si la URL trae token (vino del enlace del email), prioriza la pantalla
+    // de "establecer nueva contraseña".
+    var token = getResetToken();
+    if (token) { showResetScreen(token); return; }
     try {
       var res = await fetch('/admin/me');
       if (res.ok) {
@@ -632,6 +773,105 @@
     showLogin('Sesión cerrada.', true);
   };
 
+  /* --- Recuperación de contraseña --- */
+
+  $('forgotLink').onclick = function (e) { e.preventDefault(); showForgot(); };
+  $('backToLogin').onclick = function (e) { e.preventDefault(); showLogin(); };
+  $('backToLoginFromReset').onclick = function (e) {
+    e.preventDefault();
+    // Limpia el token de la URL al volver al login.
+    history.replaceState(null, '', '/admin');
+    showLogin();
+  };
+  $('resetGoForgot').onclick = function (e) {
+    e.preventDefault();
+    history.replaceState(null, '', '/admin');
+    showForgot();
+  };
+  $('forgotEmail').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') $('forgotBtn').click();
+  });
+
+  $('forgotBtn').onclick = async function () {
+    var email = $('forgotEmail').value.trim();
+    var r = $('forgotResult');
+    if (!email) {
+      r.textContent = 'Pon tu email.';
+      r.className = 'err';
+      return;
+    }
+    $('forgotBtn').disabled = true;
+    r.textContent = 'Enviando…';
+    r.className = '';
+    try {
+      var res = await fetch('/admin/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email }),
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        r.textContent = '✅ Si ese email está en el panel, te llegará un enlace en unos minutos. Revisa también spam.';
+        r.className = 'ok';
+      } else {
+        r.textContent = msgFor(d, res.status);
+        r.className = 'err';
+      }
+    } catch (e) {
+      r.textContent = 'Error de conexión.';
+      r.className = 'err';
+    }
+    $('forgotBtn').disabled = false;
+  };
+
+  $('resetPass2').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') $('resetBtn').click();
+  });
+
+  $('resetBtn').onclick = async function () {
+    var token = getResetToken();
+    var p1 = $('resetPass1').value;
+    var p2 = $('resetPass2').value;
+    var r = $('resetResult');
+    if (!token) { r.textContent = 'Enlace inválido.'; r.className = 'err'; return; }
+    if (!p1 || !p2) { r.textContent = 'Rellena las dos contraseñas.'; r.className = 'err'; return; }
+    if (p1 !== p2) { r.textContent = 'Las contraseñas no coinciden.'; r.className = 'err'; return; }
+    if (p1.length < 10) { r.textContent = 'Mínimo 10 caracteres.'; r.className = 'err'; return; }
+    $('resetBtn').disabled = true;
+    r.textContent = 'Guardando…'; r.className = '';
+    try {
+      var res = await fetch('/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token, newPassword: p1 }),
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        r.textContent = '✅ Contraseña actualizada. Ya puedes entrar con la nueva.';
+        r.className = 'ok';
+        $('resetForm').classList.add('hidden');
+        // Tras 1.5s, redirigir al login con el usuario prerrellenado.
+        setTimeout(function () {
+          history.replaceState(null, '', '/admin');
+          showLogin('Entra con tu nueva contraseña.', true);
+          if (d.username) $('loginUser').value = d.username;
+          $('loginPass').focus();
+        }, 1500);
+      } else {
+        r.textContent = msgFor(d, res.status);
+        r.className = 'err';
+        if (d.error === 'invalid_or_expired') {
+          $('resetForm').classList.add('hidden');
+          $('resetInvalid').classList.remove('hidden');
+        }
+      }
+    } catch (e) {
+      r.textContent = 'Error de conexión.';
+      r.className = 'err';
+    }
+    $('resetBtn').disabled = false;
+  };
+
   /* --- Pestañas --- */
 
   var historyLoaded = false;
@@ -652,6 +892,37 @@
   document.querySelectorAll('.tab').forEach(function (tab) {
     tab.onclick = function () { selectTab(this.getAttribute('data-tab')); };
   });
+
+  /* --- Mi cuenta: email --- */
+
+  function showSaveEmail(msg, err) {
+    var r = $('saveEmailResult');
+    r.textContent = msg || '';
+    r.className = err ? 'err' : 'ok';
+  }
+
+  $('saveEmailBtn').onclick = async function () {
+    var email = $('myEmail').value.trim();
+    $('saveEmailBtn').disabled = true;
+    showSaveEmail('Guardando…', false);
+    try {
+      var res = await api('/admin/me/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email || null }),
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (res.ok) {
+        currentUser.email = d.email || null;
+        showSaveEmail(email ? '✅ Email guardado.' : '✅ Email eliminado.', false);
+      } else {
+        showSaveEmail(msgFor(d, res.status), true);
+      }
+    } catch (e) {
+      if (e.message !== 'unauthorized') showSaveEmail('Error de conexión.', true);
+    }
+    $('saveEmailBtn').disabled = false;
+  };
 
   /* --- Cambio de contraseña propio --- */
 
@@ -729,7 +1000,13 @@
     var lastLogin = u.lastLoginAt
       ? 'Último acceso: ' + esc(fmtDate(u.lastLoginAt))
       : 'Nunca ha entrado';
+    var emailLine = u.email
+      ? '📧 ' + esc(u.email)
+      : '<span style="color:#C8443A">Sin email — no podrá recuperar su contraseña</span>';
     var actions = [];
+    actions.push('<button class="ghost" data-act="email" data-id="' + u.id + '" data-name="'
+      + esc(u.username) + '" data-email="' + esc(u.email || '') + '">'
+      + (u.email ? 'Editar email' : 'Añadir email') + '</button>');
     if (!isMe) {
       actions.push('<button class="ghost" data-act="role" data-id="' + u.id + '" data-role="'
         + (u.role === 'admin' ? 'editor' : 'admin') + '">'
@@ -747,6 +1024,7 @@
     return '<div class="user-row">'
       + '<div>'
         + '<div class="name">' + esc(u.username) + (isMe ? ' (tú)' : '') + ' ' + roleBadge + ' ' + disabledBadge + '</div>'
+        + '<div class="meta">' + emailLine + '</div>'
         + '<div class="meta">' + esc(lastLogin) + ' · Creado el ' + esc(fmtDate(u.createdAt)) + '</div>'
       + '</div>'
       + '<div class="row-actions">' + actions.join('') + '</div>'
@@ -768,6 +1046,11 @@
         await patchUser(id, { role: btn.dataset.role });
       } else if (act === 'toggle') {
         await patchUser(id, { enabled: btn.dataset.enabled === 'true' });
+      } else if (act === 'email') {
+        var newEmail = prompt('Email de ' + btn.dataset.name + ' (vacío para quitarlo):', btn.dataset.email || '');
+        if (newEmail == null) return;
+        newEmail = newEmail.trim();
+        await patchUser(id, { email: newEmail || null });
       } else if (act === 'reset') {
         var p = prompt('Nueva contraseña para ' + btn.dataset.name + ' (mín. 10 caracteres):');
         if (p == null) return;
@@ -800,21 +1083,25 @@
     var username = $('newUserName').value.trim();
     var role = $('newUserRole').value;
     var pass = $('newUserPass').value;
+    var email = $('newUserEmail').value.trim();
     if (!username || !pass) { showCreateUser('Pon usuario y contraseña.', true); return; }
     if (pass.length < 10) { showCreateUser('La contraseña debe tener al menos 10 caracteres.', true); return; }
     $('createUserBtn').disabled = true;
     showCreateUser('Creando…', false);
     try {
+      var body = { username: username, role: role, password: pass };
+      if (email) body.email = email;
       var res = await api('/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username, role: role, password: pass }),
+        body: JSON.stringify(body),
       });
       var d = await res.json().catch(function () { return {}; });
       if (res.ok) {
         showCreateUser('✅ Usuario "' + username + '" creado.', false);
         $('newUserName').value = '';
         $('newUserPass').value = '';
+        $('newUserEmail').value = '';
         $('newUserRole').value = 'editor';
         loadUsers();
       } else {

@@ -32,6 +32,17 @@ CREATE TABLE IF NOT EXISTS app_push_tokens (
   updated_at   timestamptz NOT NULL DEFAULT now()
 );
 
+-- Email del cliente asociado al dispositivo. Se rellena cuando la app
+-- envía un token de Customer Account API válido y el backend resuelve
+-- contra Shopify (mismo flujo que customer_id). Permite que los
+-- webhooks de pedido encuentren el dispositivo por email también, no
+-- solo por customer_id — útil para clientes que pidieron con un id de
+-- Shopify pero en la app han iniciado sesión con otro perfil del mismo
+-- email.
+ALTER TABLE app_push_tokens ADD COLUMN IF NOT EXISTS email text;
+CREATE INDEX IF NOT EXISTS app_push_tokens_email_lower_idx
+  ON app_push_tokens (lower(email)) WHERE email IS NOT NULL;
+
 -- Historial de notificaciones enviadas. Alimenta el buzón de la app y las
 -- estadísticas de apertura del panel.
 CREATE TABLE IF NOT EXISTS app_notifications (
@@ -163,6 +174,25 @@ CREATE TABLE IF NOT EXISTS app_admin_users (
 
 CREATE INDEX IF NOT EXISTS app_admin_users_username_lower_idx
   ON app_admin_users (lower(username));
+
+-- Email del usuario, opcional pero necesario para la recuperación de
+-- contraseña por correo. Único (cuando está definido).
+ALTER TABLE app_admin_users ADD COLUMN IF NOT EXISTS email text;
+CREATE UNIQUE INDEX IF NOT EXISTS app_admin_users_email_lower_uq
+  ON app_admin_users (lower(email)) WHERE email IS NOT NULL;
+
+-- Tokens de recuperación de contraseña enviados por email. Caducan a la
+-- hora; se marcan como usados al consumirlos (no se pueden reutilizar).
+CREATE TABLE IF NOT EXISTS app_admin_password_resets (
+  token        text        PRIMARY KEY,
+  user_id      bigint      NOT NULL REFERENCES app_admin_users(id) ON DELETE CASCADE,
+  expires_at   timestamptz NOT NULL,
+  used_at      timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS app_admin_password_resets_user_idx
+  ON app_admin_password_resets (user_id, expires_at DESC);
 
 -- Auditoría mínima de intentos fallidos de login (rate limiting por IP).
 -- Se purga sola: solo se conservan las últimas 24h.
