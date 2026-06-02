@@ -183,6 +183,15 @@
     width: auto; height: 32px; margin: 0; padding: 0 12px;
     font-size: 12px; font-weight: 700;
   }
+  /* Editor inline de email en cada fila */
+  .email-edit { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; max-width: 360px; }
+  .email-edit input { padding: 8px 10px; font-size: 14px; }
+  .email-edit-actions { display: flex; gap: 6px; }
+  .email-edit-actions button {
+    width: auto; height: 32px; margin: 0; padding: 0 12px;
+    font-size: 12px; font-weight: 700;
+  }
+  .email-result { font-size: 12px; font-weight: 700; margin-top: 4px; min-height: 14px; }
   .badge-role {
     display: inline-block; background: #2B818B; color: #fff;
     border-radius: 100px; padding: 2px 9px; font-size: 10px;
@@ -1021,10 +1030,17 @@
       actions.push('<button class="danger" data-act="delete" data-id="' + u.id + '" data-name="'
         + esc(u.username) + '">Eliminar</button>');
     }
-    return '<div class="user-row">'
+    return '<div class="user-row" data-row-id="' + u.id + '">'
       + '<div>'
         + '<div class="name">' + esc(u.username) + (isMe ? ' (tú)' : '') + ' ' + roleBadge + ' ' + disabledBadge + '</div>'
-        + '<div class="meta">' + emailLine + '</div>'
+        + '<div class="meta email-line">' + emailLine + '</div>'
+        + '<div class="email-edit hidden">'
+          + '<input type="email" class="email-input" value="' + esc(u.email || '') + '" placeholder="ej. maria@aromasdete.com" autocapitalize="none" autocorrect="off" />'
+          + '<div class="email-edit-actions">'
+            + '<button class="mini email-save">Guardar</button>'
+            + '<button class="mini ghost email-cancel">Cancelar</button>'
+          + '</div>'
+        + '</div>'
         + '<div class="meta">' + esc(lastLogin) + ' · Creado el ' + esc(fmtDate(u.createdAt)) + '</div>'
       + '</div>'
       + '<div class="row-actions">' + actions.join('') + '</div>'
@@ -1035,6 +1051,66 @@
     $('usersList').querySelectorAll('button[data-act]').forEach(function (btn) {
       btn.onclick = function () { onUserAction(btn); };
     });
+    // Botones Guardar / Cancelar del editor inline de email.
+    $('usersList').querySelectorAll('.user-row').forEach(function (row) {
+      var save = row.querySelector('.email-save');
+      var cancel = row.querySelector('.email-cancel');
+      var input = row.querySelector('.email-input');
+      if (save) save.onclick = function () { saveEmailEditor(row); };
+      if (cancel) cancel.onclick = function () { closeEmailEditor(row); };
+      if (input) input.onkeydown = function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); saveEmailEditor(row); }
+        if (e.key === 'Escape') { e.preventDefault(); closeEmailEditor(row); }
+      };
+    });
+  }
+
+  function openEmailEditor(id) {
+    var row = $('usersList').querySelector('.user-row[data-row-id="' + id + '"]');
+    if (!row) return;
+    // Cierra cualquier otro editor abierto.
+    $('usersList').querySelectorAll('.user-row .email-edit').forEach(function (e) {
+      e.classList.add('hidden');
+      var line = e.parentElement.querySelector('.email-line');
+      if (line) line.classList.remove('hidden');
+    });
+    var line = row.querySelector('.email-line');
+    var edit = row.querySelector('.email-edit');
+    if (line) line.classList.add('hidden');
+    if (edit) {
+      edit.classList.remove('hidden');
+      var input = edit.querySelector('.email-input');
+      if (input) { input.focus(); input.select(); }
+    }
+  }
+
+  function closeEmailEditor(row) {
+    var line = row.querySelector('.email-line');
+    var edit = row.querySelector('.email-edit');
+    if (edit) edit.classList.add('hidden');
+    if (line) line.classList.remove('hidden');
+  }
+
+  async function saveEmailEditor(row) {
+    var id = row.dataset.rowId;
+    var input = row.querySelector('.email-input');
+    var save = row.querySelector('.email-save');
+    var value = (input.value || '').trim();
+    save.disabled = true;
+    save.textContent = 'Guardando…';
+    try {
+      var res = await api('/admin/users/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: value || null }),
+      });
+      var d = await res.json().catch(function () { return {}; });
+      if (!res.ok) { alert(msgFor(d, res.status)); save.disabled = false; save.textContent = 'Guardar'; return; }
+      await loadUsers();
+    } catch (e) {
+      if (e.message !== 'unauthorized') alert('Error de conexión.');
+      save.disabled = false; save.textContent = 'Guardar';
+    }
   }
 
   async function onUserAction(btn) {
@@ -1047,10 +1123,8 @@
       } else if (act === 'toggle') {
         await patchUser(id, { enabled: btn.dataset.enabled === 'true' });
       } else if (act === 'email') {
-        var newEmail = prompt('Email de ' + btn.dataset.name + ' (vacío para quitarlo):', btn.dataset.email || '');
-        if (newEmail == null) return;
-        newEmail = newEmail.trim();
-        await patchUser(id, { email: newEmail || null });
+        openEmailEditor(id);
+        return; // No recargamos hasta que guarde / cancele
       } else if (act === 'reset') {
         var p = prompt('Nueva contraseña para ' + btn.dataset.name + ' (mín. 10 caracteres):');
         if (p == null) return;
