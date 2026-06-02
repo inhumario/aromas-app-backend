@@ -143,6 +143,19 @@
     text-transform: uppercase; letter-spacing: .5px;
   }
   .topbar .who .badge.editor { background: #6E5AA0; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .version-tag {
+    font-size: 11px; font-weight: 700; color: #A89F8C;
+    background: #fff; border: 1px solid #E8DFD0; border-radius: 100px;
+    padding: 3px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    cursor: help;
+  }
+  .version-footer {
+    width: 100%; text-align: center; font-size: 11px; font-weight: 600;
+    color: #A89F8C; margin-top: 24px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
   .topbar button.logout {
     width: auto; height: 36px; margin: 0; padding: 0 16px;
     background: #fff; color: #C8443A; border: 1px solid #E8DFD0;
@@ -286,8 +299,14 @@
     <span>Hola, <b id="whoName">…</b></span>
     <span class="badge" id="whoBadge">…</span>
   </div>
-  <button class="logout" id="logoutBtn">Cerrar sesión</button>
+  <div class="topbar-right">
+    <span class="version-tag" id="versionTag" title="__BUILD_DATE__">v __BUILD_ID__</span>
+    <button class="logout" id="logoutBtn">Cerrar sesión</button>
+  </div>
 </div>
+
+<!-- También se muestra en la pantalla de login, en pequeñito -->
+<div class="version-footer">v __BUILD_ID__ · __BUILD_DATE__</div>
 
 <div id="tabs" class="tabs hidden">
   <button class="tab active" data-tab="enviar">Enviar</button>

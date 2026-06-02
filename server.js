@@ -10,7 +10,8 @@
  */
 import cors from 'cors';
 import express from 'express';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, statSync } from 'node:fs';
 import pg from 'pg';
 import { getAllRatings, getReviewsForHandle } from './reviews.js';
 import { recordNotification, sendPush } from './push.js';
@@ -43,10 +44,52 @@ const CUSTOMER_API =
   process.env.SHOPIFY_CUSTOMER_API ||
   'https://shopify.com/79280144711/account/customer/api/2025-01/graphql';
 
-const PANEL_HTML = readFileSync(new URL('./panel.html', import.meta.url), 'utf8');
+const PANEL_HTML_RAW = readFileSync(new URL('./panel.html', import.meta.url), 'utf8');
 
 // URL pública del backend, para construir el enlace de la imagen del popup.
 const PUBLIC_BASE = process.env.PUBLIC_BASE_URL || 'https://app-api.aromasdete.com';
+
+/* --------------------------- Versión del panel ----------------------- */
+
+// Identificador único de cada despliegue. Se calcula al arrancar a partir
+// del hash del HTML del panel + el código del servidor; cualquier cambio
+// en uno u otro genera un BUILD_ID distinto, así Mario (y nosotros) ve en
+// la cabecera del panel exactamente qué versión está cargada y puede
+// comparar contra la que acaba de desplegarse. Sin necesidad de mantener
+// un número de versión a mano.
+function computeBuildId() {
+  try {
+    const h = createHash('sha256');
+    for (const file of ['./panel.html', './server.js', './auth.js']) {
+      try { h.update(readFileSync(new URL(file, import.meta.url))); } catch {}
+    }
+    return h.digest('hex').slice(0, 8);
+  } catch {
+    return 'unknown';
+  }
+}
+function startedAt() {
+  try {
+    // Mtime del fichero más reciente: aproxima la fecha del despliegue
+    // (el contenedor se acaba de construir con esos archivos).
+    let max = 0;
+    for (const file of ['./panel.html', './server.js']) {
+      try { max = Math.max(max, statSync(new URL(file, import.meta.url)).mtimeMs); } catch {}
+    }
+    return max ? new Date(max).toISOString() : new Date().toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+const BUILD_ID = computeBuildId();
+const BUILD_DATE = startedAt();
+console.log(`Build ${BUILD_ID} (${BUILD_DATE})`);
+
+// El HTML del panel sin tocar se sirve siempre; al servirlo, sustituyo el
+// placeholder ${BUILD_VERSION} (si existe) por la cadena calculada arriba.
+const PANEL_HTML = PANEL_HTML_RAW
+  .replace(/__BUILD_ID__/g, BUILD_ID)
+  .replace(/__BUILD_DATE__/g, BUILD_DATE);
 
 /* --------------------------- Base de datos --------------------------- */
 
@@ -280,7 +323,13 @@ app.use(
   }),
 );
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'aromas-app-backend' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'aromas-app-backend', build: BUILD_ID }));
+
+// Versión del panel (la usa el propio panel para mostrarla en la cabecera
+// y para detectar si el servidor ha redespeguado con código nuevo).
+app.get('/admin/version', (_req, res) => {
+  res.json({ build: BUILD_ID, date: BUILD_DATE });
+});
 
 /* --- Valoraciones de producto (Trusted Shops) — público --- */
 
