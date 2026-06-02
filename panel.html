@@ -1105,9 +1105,70 @@
             (ta.likes||0) + ' 👍 · ' + (ta.dislikes||0) + ' 👎', true)
       + '</div></div>';
 
+    // Descargas oficiales de las stores (slot vacío hasta que carguen).
+    html += '<div class="stat-section" id="downloadsSection">'
+      + '<h2>Descargas oficiales</h2>'
+      + '<div class="sub">Datos consultados directamente a App Store Connect y Google Play.</div>'
+      + '<div id="downloadsContent"><div class="empty">Cargando…</div></div>'
+      + '</div>';
+
     $('statsContent').innerHTML = html;
     var gen = d.generatedAt ? new Date(d.generatedAt) : new Date();
     $('statsSubtitle').textContent = 'Actualizado el ' + gen.toLocaleString('es-ES');
+
+    // Las descargas tardan (varias llamadas a Apple/Google); cargamos
+    // después de mostrar las stats internas para no bloquear nada.
+    loadDownloads();
+  }
+
+  function renderStore(label, data) {
+    if (!data) return statCard(label, '—', 'Sin datos');
+    if (data.error === 'config_missing') {
+      return statCard(label, '—', 'Pendiente de configurar credenciales.');
+    }
+    if (data.error) {
+      var detail = '';
+      if (data.error === 'api_error' && data.status === 404) {
+        detail = 'API no habilitada. Activa la Play Developer Reporting API en GCP.';
+      } else if (data.error === 'auth_failed') {
+        detail = 'Auth rechazada — revisa la API key o vendor number.';
+      } else {
+        detail = data.detail ? esc(data.detail.slice(0, 120)) : data.error;
+      }
+      return statCard(label, 'Error', detail);
+    }
+    return statCard(label, data.total ?? 0,
+      'Últimos ' + (data.days || 30) + ' días' + (data.note ? ' · ' + esc(data.note) : ''),
+      true);
+  }
+
+  async function loadDownloads() {
+    var box = $('downloadsContent');
+    if (!box) return;
+    try {
+      var res = await api('/admin/stats/downloads');
+      if (!res.ok) {
+        box.innerHTML = '<div class="empty">No se pudieron cargar las descargas.</div>';
+        return;
+      }
+      var d = await res.json();
+      var ios = d.ios, android = d.android;
+      var iosTotal = (ios && !ios.error) ? ios.total : null;
+      var andTotal = (android && !android.error) ? android.total : null;
+      var combined = (iosTotal != null && andTotal != null) ? iosTotal + andTotal : null;
+      var html = '<div class="stats-grid">';
+      html += renderStore('iOS (App Store)', ios);
+      html += renderStore('Android (Google Play)', android);
+      if (combined != null) {
+        html += statCard('Total combinado', combined, 'Últimos 30 días', false);
+      }
+      html += '</div>';
+      box.innerHTML = html;
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        box.innerHTML = '<div class="empty">No se pudieron cargar las descargas.</div>';
+      }
+    }
   }
 
   async function loadStats() {

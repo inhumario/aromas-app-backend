@@ -32,6 +32,7 @@ import {
   verifySession,
 } from './auth.js';
 import { sendEmail } from './mailer.js';
+import { androidDownloads, iosDownloads } from './stores.js';
 
 const { Pool } = pg;
 
@@ -765,6 +766,31 @@ app.post('/admin/me/password', adminAuth(), async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('POST /admin/me/password:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+/* --- Descargas oficiales de las stores (App Store + Google Play) --- */
+
+// Caché en memoria: las dos APIs son lentas (varios HTTP por día) y los
+// reportes diarios no cambian una vez generados, así que basta con
+// refrescar cada hora.
+let downloadsCache = null;
+
+app.get('/admin/stats/downloads', adminAuth(), async (_req, res) => {
+  if (downloadsCache && downloadsCache.exp > Date.now()) {
+    return res.json(downloadsCache.value);
+  }
+  try {
+    const [ios, android] = await Promise.all([
+      iosDownloads(30).catch((err) => ({ error: 'fetch_failed', detail: err.message })),
+      androidDownloads(30).catch((err) => ({ error: 'fetch_failed', detail: err.message })),
+    ]);
+    const value = { ios, android, generatedAt: new Date().toISOString() };
+    downloadsCache = { value, exp: Date.now() + 60 * 60 * 1000 };
+    res.json(value);
+  } catch (err) {
+    console.error('GET /admin/stats/downloads:', err.message);
     res.status(500).json({ error: 'server_error' });
   }
 });
