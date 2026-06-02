@@ -777,6 +777,103 @@ app.post('/admin/me/password', adminAuth(), async (req, res) => {
 // refrescar cada hora.
 let downloadsCache = null;
 
+/* --- Pedidos hechos a través de la app vs total Shopify --- */
+
+// Consultamos el Admin API de Shopify y agrupamos por canal: los pedidos de
+// la app traen un `source_name` con el ID del canal de la app móvil (la app
+// personalizada del Storefront API), mientras que la web sale como "web".
+// No tocamos el código del carrito: Shopify ya distingue los pedidos por el
+// canal asociado al token Storefront usado, así que basta con contar.
+//
+// Caché ~10 min: la consulta es razonablemente rápida (4 counts paralelos),
+// pero el stat tampoco cambia segundo a segundo.
+let appOrdersCache = null;
+
+async function fetchAppOrders() {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const token = process.env.SHOPIFY_ADMIN_TOKEN;
+  const version = process.env.SHOPIFY_ADMIN_API_VERSION || '2025-01';
+  const sourcePrefix = process.env.SHOPIFY_APP_SOURCE_PREFIX || '269681';
+  if (!domain || !token) {
+    return { error: 'config_missing' };
+  }
+
+  const now = new Date();
+  const ago = (days) => {
+    const d = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  };
+  const since30 = ago(30);
+  const since7 = ago(7);
+
+  const query = `
+    query AppOrdersCount(
+      $q30: String!, $q30App: String!,
+      $q7: String!,  $q7App: String!
+    ) {
+      total30: ordersCount(query: $q30)    { count }
+      app30:   ordersCount(query: $q30App) { count }
+      total7:  ordersCount(query: $q7)     { count }
+      app7:    ordersCount(query: $q7App)  { count }
+    }
+  `;
+  const variables = {
+    q30: `created_at:>${since30}`,
+    q30App: `created_at:>${since30} source_name:${sourcePrefix}*`,
+    q7: `created_at:>${since7}`,
+    q7App: `created_at:>${since7} source_name:${sourcePrefix}*`,
+  };
+
+  const res = await fetch(
+    `https://${domain}/admin/api/${version}/graphql.json`,
+    {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables }),
+    },
+  );
+  if (!res.ok) {
+    return { error: 'api_error', status: res.status };
+  }
+  const json = await res.json();
+  if (json.errors) {
+    return { error: 'api_error', detail: JSON.stringify(json.errors).slice(0, 200) };
+  }
+  const d = json.data || {};
+  const app30 = d.app30?.count ?? 0;
+  const total30 = d.total30?.count ?? 0;
+  const app7 = d.app7?.count ?? 0;
+  const total7 = d.total7?.count ?? 0;
+  return {
+    app30, total30,
+    app7,  total7,
+    pct30: total30 ? Math.round((app30 / total30) * 100) : 0,
+    pct7:  total7  ? Math.round((app7  / total7)  * 100) : 0,
+  };
+}
+
+app.get('/admin/stats/app-orders', adminAuth(), async (_req, res) => {
+  if (appOrdersCache && appOrdersCache.exp > Date.now()) {
+    return res.json(appOrdersCache.value);
+  }
+  try {
+    const data = await fetchAppOrders();
+    const value = { ...data, generatedAt: new Date().toISOString() };
+    // Solo cacheamos si no es error de configuración; los fallos transitorios
+    // se reintenta al siguiente refresco.
+    if (!data.error || data.error === 'config_missing') {
+      appOrdersCache = { value, exp: Date.now() + 10 * 60 * 1000 };
+    }
+    res.json(value);
+  } catch (err) {
+    console.error('GET /admin/stats/app-orders:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 app.get('/admin/stats/downloads', adminAuth(), async (_req, res) => {
   if (downloadsCache && downloadsCache.exp > Date.now()) {
     return res.json(downloadsCache.value);

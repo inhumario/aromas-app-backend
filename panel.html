@@ -1093,6 +1093,13 @@
       + '</div>';
     html += '</div>'; // /stat-section notifs
 
+    // Pedidos hechos desde la app (slot, lo rellena loadAppOrders()).
+    html += '<div class="stat-section" id="appOrdersSection">'
+      + '<h2>Pedidos desde la app</h2>'
+      + '<div class="sub">Pedidos hechos a través del canal de la app móvil de Aromas, comparados con el total de Shopify (web + resto de canales).</div>'
+      + '<div id="appOrdersContent"><div class="empty">Cargando…</div></div>'
+      + '</div>';
+
     // Engagement
     html += '<div class="stat-section"><h2>Engagement</h2>'
       + '<div class="sub">Cómo usan los clientes la lista de deseos y las notas de cata.</div>'
@@ -1119,6 +1126,41 @@
     // Las descargas tardan (varias llamadas a Apple/Google); cargamos
     // después de mostrar las stats internas para no bloquear nada.
     loadDownloads();
+    loadAppOrders();
+  }
+
+  async function loadAppOrders() {
+    var box = $('appOrdersContent');
+    if (!box) return;
+    try {
+      var res = await api('/admin/stats/app-orders');
+      if (!res.ok) {
+        box.innerHTML = '<div class="empty">No se pudieron cargar los pedidos.</div>';
+        return;
+      }
+      var d = await res.json();
+      if (d.error === 'config_missing') {
+        box.innerHTML = '<div class="empty">Pendiente de configurar el Admin API de Shopify (SHOPIFY_ADMIN_TOKEN).</div>';
+        return;
+      }
+      if (d.error) {
+        box.innerHTML = '<div class="empty">No se pudieron cargar los pedidos (' + esc(d.error) + ').</div>';
+        return;
+      }
+      var html = '<div class="stats-grid">'
+        + statCard('Pedidos en la app (30 d)', d.app30 ?? 0,
+            (d.pct30 ?? 0) + '% del total de Shopify (' + (d.total30 ?? 0) + ')', true)
+        + statCard('Pedidos en la app (7 d)', d.app7 ?? 0,
+            (d.pct7 ?? 0) + '% del total de Shopify (' + (d.total7 ?? 0) + ')')
+        + statCard('Total Shopify (30 d)', d.total30 ?? 0,
+            'Web + app + resto de canales')
+        + '</div>';
+      box.innerHTML = html;
+    } catch (e) {
+      if (e.message !== 'unauthorized') {
+        box.innerHTML = '<div class="empty">No se pudieron cargar los pedidos.</div>';
+      }
+    }
   }
 
   function renderStore(label, data) {
