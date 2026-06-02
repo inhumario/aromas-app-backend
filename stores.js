@@ -192,60 +192,110 @@ async function getPlayAccessToken() {
 }
 
 /**
- * Descargas Android usando la Play Developer Reporting API. Métrica
- * INSTALL_EVENT con conteo de "first time" installs. La API devuelve
- * datos diarios; pedimos el último mes.
+ * Descargas Android leyendo los reportes oficiales de Play Console
+ * desde su bucket de Cloud Storage. Cada mes natural Google deposita
+ * en `gs://pubsite_prod_<DEVELOPER_ID>/stats/installs/` varios CSV
+ * (UTF-16 LE) con las descargas/uninstalls diarios.
+ *
+ * Resumimos la columna "Daily Device Installs" del archivo `overview`
+ * (primera descarga en cada dispositivo) para los últimos N días.
  */
+async function getStorageToken() {
+  return getPlayAccessTokenWithScope('https://www.googleapis.com/auth/devstorage.read_only');
+}
+
+async function getPlayAccessTokenWithScope(scope) {
+  const saB64 = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64;
+  if (!saB64) return null;
+  let sa;
+  try { sa = JSON.parse(Buffer.from(saB64, 'base64').toString('utf8')); }
+  catch { return null; }
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({
+    iss: sa.client_email, scope, aud: 'https://oauth2.googleapis.com/token',
+    iat: now, exp: now + 3600,
+  }));
+  const key = createPrivateKey({ key: sa.private_key, format: 'pem' });
+  const sig = createSign('RSA-SHA256').update(`${header}.${payload}`).sign(key);
+  const jwt = `${header}.${payload}.${b64url(sig)}`;
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()).access_token;
+}
+
+function decodeCsv(buf) {
+  // Los reportes de Play vienen en UTF-16 LE con BOM.
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.slice(2).toString('utf16le');
+  if (buf[0] === 0xfe && buf[1] === 0xff) return buf.slice(2).swap16().toString('utf16le');
+  return buf.toString('utf8');
+}
+
 export async function androidDownloads(days = 30) {
   const pkg = process.env.GOOGLE_PLAY_PACKAGE_NAME;
-  const token = await getPlayAccessToken();
-  if (!token || !pkg) return { error: 'config_missing' };
+  const devId = process.env.GOOGLE_PLAY_DEVELOPER_ID;
+  if (!pkg || !devId) return { error: 'config_missing' };
+  const token = await getStorageToken();
+  if (!token) return { error: 'config_missing' };
 
-  // Endpoint: appReadinessMetricSet.query (counts of first-time installs).
-  // Documentación: https://developers.google.com/play/developer/reporting
-  // Usamos la métrica "firstTimeDownloadCount" (acumulado diario por país,
-  // lo agregamos al sumar todas las filas).
-  const url = `https://playdeveloperreporting.googleapis.com/v1beta1/apps/${encodeURIComponent(pkg)}/installsMetricSet:query`;
+  const bucket = `pubsite_prod_${devId}`;
   const today = new Date();
-  // La API espera fechas en UTC con timezone. Pedimos último N días.
-  const end = new Date(today.getTime() - 2 * 86400000);    // 2 días de margen
-  const start = new Date(end.getTime() - days * 86400000);
-  const body = {
-    timelineSpec: {
-      aggregationPeriod: 'DAILY',
-      startTime: { year: start.getUTCFullYear(), month: start.getUTCMonth()+1, day: start.getUTCDate(), timeZone: { id: 'UTC' } },
-      endTime:   { year: end.getUTCFullYear(),   month: end.getUTCMonth()+1,   day: end.getUTCDate(),   timeZone: { id: 'UTC' } },
-    },
-    metrics: ['activeDeviceInstalls'],
-  };
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      return { error: 'api_error', status: res.status, detail: text.slice(0, 240) };
-    }
-    const json = await res.json();
-    // Cada `rows[i].metrics.activeDeviceInstalls` es un objeto con
-    // `decimalValue` o `integerValue`. Sumamos primer y último valor
-    // como aproximación. Para una métrica más fiel se necesitaría
-    // installsMetricSet con la métrica "firstInstallCount", pero la
-    // versión beta varía; dejamos esto como aproximación.
-    const rows = json.rows || [];
-    const daily = rows.map((r) => {
-      const m = r.metrics?.activeDeviceInstalls;
-      const v = m?.decimalValue?.value || m?.integerValue?.value || 0;
-      return {
-        date: r.startTime ? `${r.startTime.year}-${String(r.startTime.month).padStart(2,'0')}-${String(r.startTime.day).padStart(2,'0')}` : '',
-        count: Number(v) || 0,
-      };
-    });
-    const total = daily.reduce((s, r) => s + r.count, 0);
-    return { total, daily, days, note: 'active_installs' };
-  } catch (err) {
-    return { error: 'fetch_failed', detail: err.message };
+  const limitFrom = new Date(today.getTime() - days * 86400000);
+  // Calculamos los meses (YYYYMM) que cubren la ventana solicitada.
+  const months = new Set();
+  for (let d = new Date(limitFrom); d <= today; d.setUTCDate(d.getUTCDate() + 1)) {
+    months.add(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
   }
+
+  const daily = [];
+  let total = 0;
+  for (const ym of months) {
+    const file = `stats/installs/installs_${pkg}_${ym}_overview.csv`;
+    const url = `https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(file)}?alt=media`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        // 404 es esperable para el mes en curso si aún no hay datos.
+        if (res.status === 404) continue;
+        if (res.status === 401 || res.status === 403) {
+          return { error: 'auth_failed', detail: `HTTP ${res.status}` };
+        }
+        continue;
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      const text = decodeCsv(buf);
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) continue;
+      const header = lines[0].split(',');
+      const dateIdx = header.indexOf('Date');
+      // "Daily Device Installs" es la métrica que mide "primer instalación
+      // en un dispositivo nuevo" — equivalente a "descarga única" del día.
+      const colIdx = header.indexOf('Daily Device Installs');
+      if (dateIdx < 0 || colIdx < 0) continue;
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',');
+        const date = cols[dateIdx];
+        if (!date) continue;
+        // Filtra por rango pedido (días hacia atrás desde hoy).
+        const d = new Date(date + 'T00:00:00Z');
+        if (d < limitFrom || d > today) continue;
+        const count = parseInt(cols[colIdx], 10);
+        if (Number.isFinite(count)) {
+          daily.push({ date, count });
+          total += count;
+        }
+      }
+    } catch {
+      /* mes problemático: lo saltamos */
+    }
+  }
+  daily.sort((a, b) => a.date.localeCompare(b.date));
+  return { total, daily, days };
 }
