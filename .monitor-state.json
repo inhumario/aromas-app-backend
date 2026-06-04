@@ -4,7 +4,7 @@
     "builds": []
   },
   "play": {
-    "error": "Error: No module named 'packaging'. The 'google-auth' library requires the extras installed for urllib3 network transport.\nPlease install the necessary dependencies using pip:\n  pip install google-auth[urllib3]\n\n(Note: Using '[urllib3]' ensures the specific dependencies needed for this feature are installed. We recommend running this command in your virtual environment.)"
+    "error": "cannot import name 'httplib2' from 'google.auth.transport' (/tmp/venv_aromas/lib/python3.11/site-packages/google/auth/transport/__init__.py)"
   },
-  "lastCheck": "2026-06-04T18:12:20Z"
+  "lastCheck": "2026-06-04T18:14:09Z"
 }
