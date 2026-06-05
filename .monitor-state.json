@@ -4,7 +4,42 @@
     "builds": []
   },
   "play": {
-    "error": "'Credentials' object has no attribute 'authorize'"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.2",
+            "status": "completed",
+            "versions": [
+              "6"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.2",
+            "status": "completed",
+            "versions": [
+              "6"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-06-05T16:15:46Z"
+  "lastCheck": "2026-06-05T16:16:47Z"
 }
