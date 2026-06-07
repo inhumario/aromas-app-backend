@@ -4,7 +4,42 @@
     "builds": []
   },
   "play": {
-    "error": "No module named 'google.auth.transport.httplib2'"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.2",
+            "status": "completed",
+            "versions": [
+              "6"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.2",
+            "status": "completed",
+            "versions": [
+              "6"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-06-07T08:11:53Z"
+  "lastCheck": "2026-06-07T08:13:09Z"
 }
