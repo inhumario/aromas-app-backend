@@ -4,7 +4,42 @@
     "builds": []
   },
   "play": {
-    "error": "cannot import name 'httplib2' from 'google.auth.transport' (/tmp/venv_aromas/lib/python3.11/site-packages/google/auth/transport/__init__.py)"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.2",
+            "status": "completed",
+            "versions": [
+              "6"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.2",
+            "status": "completed",
+            "versions": [
+              "6"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-06-09T20:13:04Z"
+  "lastCheck": "2026-06-09T20:14:05Z"
 }
