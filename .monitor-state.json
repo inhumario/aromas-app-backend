@@ -4,7 +4,42 @@
     "builds": []
   },
   "play": {
-    "error": "Session.request() got an unexpected keyword argument 'body'"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.3",
+            "status": "completed",
+            "versions": [
+              "7"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.3",
+            "status": "completed",
+            "versions": [
+              "7"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-06-13T16:14:21Z"
+  "lastCheck": "2026-06-13T16:19:42Z"
 }
