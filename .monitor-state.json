@@ -6,6 +6,6 @@
   "play": {
     "error": "No module named 'google.auth.transport.httplib2'"
   },
-  "lastCheck": "2026-06-14T06:20:06Z",
-  "emailBlocked": true
+  "lastCheck": "2026-06-14T06:20:20Z",
+  "emailBlocked": false
 }
