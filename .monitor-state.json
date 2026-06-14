@@ -4,42 +4,7 @@
     "builds": []
   },
   "play": {
-    "tracks": [
-      {
-        "track": "production",
-        "releases": [
-          {
-            "name": "1.0.3",
-            "status": "completed",
-            "versions": [
-              "7"
-            ]
-          }
-        ]
-      },
-      {
-        "track": "beta",
-        "releases": [
-          {
-            "name": null,
-            "status": "draft",
-            "versions": []
-          }
-        ]
-      },
-      {
-        "track": "internal",
-        "releases": [
-          {
-            "name": "1.0.3",
-            "status": "completed",
-            "versions": [
-              "7"
-            ]
-          }
-        ]
-      }
-    ]
+    "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain"
   },
-  "lastCheck": "2026-06-14T14:10:38Z"
+  "lastCheck": "2026-06-14T20:09:39Z"
 }
