@@ -1,10 +1,46 @@
 {
   "asc": {
-    "versions": [],
-    "builds": []
+    "blocked": true,
+    "note": "api.appstoreconnect.apple.com no está en la lista de egress permitida del entorno"
   },
   "play": {
-    "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1016)"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.3",
+            "status": "completed",
+            "versions": [
+              "7"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.3",
+            "status": "completed",
+            "versions": [
+              "7"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-06-15T18:06:57Z"
+  "lastCheck": "2026-06-15T18:13:14Z",
+  "emailNote": "SMTP bloqueado en el entorno cloud — se requiere alternativa de envío"
 }
