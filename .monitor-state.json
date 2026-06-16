@@ -1,7 +1,7 @@
 {
   "asc": {
-    "blocked": true,
-    "note": "api.appstoreconnect.apple.com no está en la lista de egress permitida del entorno"
+    "versions": [],
+    "builds": []
   },
   "play": {
     "tracks": [
@@ -41,6 +41,5 @@
       }
     ]
   },
-  "lastCheck": "2026-06-15T18:13:14Z",
-  "emailNote": "SMTP bloqueado en el entorno cloud — se requiere alternativa de envío"
+  "lastCheck": "2026-06-16T00:15:27Z"
 }
