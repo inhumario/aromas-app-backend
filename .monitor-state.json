@@ -41,5 +41,6 @@
       }
     ]
   },
-  "lastCheck": "2026-06-19T04:10:05Z"
+  "lastCheck": "2026-06-19T10:20:23Z",
+  "note": "play_ssl_error_in_sandbox_kept_last_good_state"
 }
