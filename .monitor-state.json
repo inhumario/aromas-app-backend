@@ -9,10 +9,10 @@
         "track": "production",
         "releases": [
           {
-            "name": "1.0.3",
+            "name": "1.0.4",
             "status": "completed",
             "versions": [
-              "7"
+              "8"
             ]
           }
         ]
@@ -31,15 +31,15 @@
         "track": "internal",
         "releases": [
           {
-            "name": "1.0.3",
+            "name": "1.0.4",
             "status": "completed",
             "versions": [
-              "7"
+              "8"
             ]
           }
         ]
       }
     ]
   },
-  "lastCheck": "2026-06-20T14:16:38Z"
+  "lastCheck": "2026-06-20T16:20:23Z"
 }
