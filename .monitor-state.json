@@ -4,8 +4,42 @@
     "builds": []
   },
   "play": {
-    "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain — entorno remoto con proxy SSL"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.3",
+            "status": "completed",
+            "versions": [
+              "7"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.3",
+            "status": "completed",
+            "versions": [
+              "7"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-06-20T08:10:52Z",
-  "notes": "Primera comprobación. ASC vacío (sin builds/versiones aún). Google Play inaccesible por SSL del proxy del entorno remoto. SMTP bloqueado: usar API HTTP para email."
+  "lastCheck": "2026-06-20T12:12:10Z"
 }
