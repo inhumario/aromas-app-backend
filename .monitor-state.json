@@ -4,42 +4,7 @@
     "builds": []
   },
   "play": {
-    "tracks": [
-      {
-        "track": "production",
-        "releases": [
-          {
-            "name": "1.0.3",
-            "status": "completed",
-            "versions": [
-              "7"
-            ]
-          }
-        ]
-      },
-      {
-        "track": "beta",
-        "releases": [
-          {
-            "name": null,
-            "status": "draft",
-            "versions": []
-          }
-        ]
-      },
-      {
-        "track": "internal",
-        "releases": [
-          {
-            "name": "1.0.3",
-            "status": "completed",
-            "versions": [
-              "7"
-            ]
-          }
-        ]
-      }
-    ]
+    "error": "No module named 'google.auth.httplib2'"
   },
-  "lastCheck": "2026-06-20T04:10:29Z"
+  "lastCheck": "2026-06-20T06:14:20Z"
 }
