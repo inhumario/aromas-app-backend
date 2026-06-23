@@ -4,8 +4,42 @@
     "builds": []
   },
   "play": {
-    "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain"
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.4",
+            "status": "completed",
+            "versions": [
+              "8"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.4",
+            "status": "completed",
+            "versions": [
+              "8"
+            ]
+          }
+        ]
+      }
+    ]
   },
-  "lastCheck": "2026-06-23T10:09:41Z",
-  "note": "Primera ejecucion. Google Play inaccesible por SSL del entorno cloud. SMTP bloqueado en entorno cloud."
+  "lastCheck": "2026-06-23T16:18:40Z"
 }
