@@ -1,7 +1,8 @@
 {
   "asc": {
     "versions": [],
-    "builds": []
+    "builds": [],
+    "note": "api.appstoreconnect.apple.com bloqueado por proxy (403) en este entorno de ejecucion"
   },
   "play": {
     "tracks": [
@@ -41,5 +42,5 @@
       }
     ]
   },
-  "lastCheck": "2026-06-23T16:18:40Z"
+  "lastCheck": "2026-06-26T06:12:56Z"
 }
