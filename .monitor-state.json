@@ -1,1 +1,44 @@
-{"test": true, "ts": "2026-07-15"}
+{
+  "asc": {
+    "error": "HTTPSConnectionPool(host='api.appstoreconnect.apple.com', port=443): Max retries exceeded with url: /v1/apps/6771097084/appStoreVersions?filter%5Bplatform%5D=IOS&limit=10 (Caused by ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 403 Forbidden')))"
+  },
+  "play": {
+    "tracks": [
+      {
+        "track": "production",
+        "releases": [
+          {
+            "name": "1.0.4",
+            "status": "completed",
+            "versions": [
+              "8"
+            ]
+          }
+        ]
+      },
+      {
+        "track": "beta",
+        "releases": [
+          {
+            "name": null,
+            "status": "draft",
+            "versions": []
+          }
+        ]
+      },
+      {
+        "track": "internal",
+        "releases": [
+          {
+            "name": "1.0.4",
+            "status": "completed",
+            "versions": [
+              "8"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "lastCheck": "2026-07-15T12:23:45Z"
+}
