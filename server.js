@@ -441,6 +441,23 @@ app.post('/push/register', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Baja del dispositivo: la app lo llama cuando el cliente desactiva todas
+// las categorías de avisos. Minimización de datos (RGPD): sin categorías
+// activas no hay motivo para conservar el token.
+app.post('/push/unregister', async (req, res) => {
+  const { token } = req.body || {};
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ error: 'token_required' });
+  }
+  try {
+    await pool.query('DELETE FROM app_push_tokens WHERE token = $1', [token]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /push/unregister:', err.message);
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
 /* --- Buzón de notificaciones de la app (historial, lo llama la app) --- */
 
 // Notificaciones visibles para un dispositivo: las generales + las dirigidas
@@ -1513,5 +1530,33 @@ app.set('trust proxy', true);
   await initDb();
   await bootstrapAdminUser(pool);
 })();
+
+/* --- Retención de datos (RGPD) --- */
+
+// Purga diaria: tokens push sin actividad en 180 días (dispositivo borrado,
+// app desinstalada…), notificaciones de más de 365 días (sus lecturas y
+// descartes caen en cascada) y marcas de borrado de cuenta ya antiguas.
+async function purgeStaleData() {
+  try {
+    const tokens = await pool.query(
+      "DELETE FROM app_push_tokens WHERE updated_at < now() - interval '180 days'",
+    );
+    const notifs = await pool.query(
+      "DELETE FROM app_notifications WHERE created_at < now() - interval '365 days'",
+    );
+    const deletions = await pool.query(
+      "DELETE FROM app_account_deletions WHERE requested_at < now() - interval '365 days'",
+    );
+    if (tokens.rowCount || notifs.rowCount || deletions.rowCount) {
+      console.log(
+        `Retención: purgados ${tokens.rowCount} tokens, ${notifs.rowCount} notificaciones, ${deletions.rowCount} marcas de borrado`,
+      );
+    }
+  } catch (err) {
+    console.error('purgeStaleData:', err.message);
+  }
+}
+setTimeout(purgeStaleData, 60 * 1000);
+setInterval(purgeStaleData, 24 * 60 * 60 * 1000);
 
 app.listen(PORT, () => console.log(`Backend de Aromas de Té escuchando en :${PORT}`));
